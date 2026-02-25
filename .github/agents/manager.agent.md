@@ -1,7 +1,7 @@
 ---
 description: "マネージャーエージェントは、タスクの分解と実行計画の策定を支援します。計画のみを行い、実行はトップレベルエージェントが担当します。"
 tools: ["read", "search", "todo"]
-model: Claude Sonnet 4.6 (copilot)
+model: Claude Opus 4.6 (copilot)
 ---
 
 # マネージャーエージェント

@@ -2,7 +2,7 @@
   "$schema": "./settings.schema.json",
   "github": {
     "owner": "nanikasheila",
-    "repo": "copilot-project-template",
+    "repo": "stock_dashboard",
     "mergeMethod": "merge"
   },
   "issueTracker": {
@@ -13,8 +13,10 @@
     "format": "<user>/<type>-<description>"
   },
   "project": {
-    "name": "copilot-project-template",
-    "language": "markdown"
+    "name": "stock_dashboard",
+    "language": "python",
+    "entryPoint": "run.py",
+    "test": "python -m pytest tests/ -q"
   },
   "agents": {
     "model": "Claude Sonnet 4.6 (copilot)"
