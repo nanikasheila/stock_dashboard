@@ -1,6 +1,17 @@
 ```instructions
 # Copilot Instructions
 
+## ⚠️ Git ワークフロー（最重要ルール）
+
+**コード変更を伴うタスクを開始する前に、必ず `rules/git-preflight.md` を実行すること。**
+
+- main ブランチ上での直接編集は禁止
+- すべての作業は worktree 上で行う
+- 違反した場合は `rules/error-handling.md` のリカバリ手順に従う
+
+このチェックはすべての実装・修正・リファクタリング・テスト追加で必須。
+読み取り専用の操作（コード閲覧・分析・質問回答）では不要。
+
 ## プロジェクト設定
 
 プロジェクト固有の設定は `.github/settings.json` で管理する（スキーマ: `settings.schema.json`）。
