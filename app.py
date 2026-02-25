@@ -40,8 +40,10 @@ from components.data_loader import (
     get_benchmark_series,
     run_dashboard_health_check,
     fetch_economic_news,
+    clear_price_cache,
 )
 from components.settings_store import load_settings, save_settings, DEFAULTS
+from components.trade_form import render_trade_form
 from components.llm_analyzer import (
     AVAILABLE_MODELS as LLM_MODELS,
     CACHE_TTL_OPTIONS as LLM_CACHE_OPTIONS,
@@ -730,6 +732,27 @@ with _tab_settings:
     )
     auto_refresh_sec = dict(_REFRESH_OPTIONS)[auto_refresh_label]
 
+    # --- 手動更新ボタン ---
+    if st.button("📥 今すぐ更新", help="キャッシュを無視してデータを即座に再取得します"):
+        # a. Streamlit インメモリキャッシュをクリア
+        load_snapshot.clear()
+        load_history.clear()
+        load_trade_activity.clear()
+        load_health_check.clear()
+        load_economic_news.clear()
+        # b. ディスクキャッシュ（価格履歴 CSV）を削除
+        _deleted = clear_price_cache()
+        # c. 手動更新タイムスタンプを記録
+        _now = time.strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state["last_manual_refresh"] = _now
+        st.session_state["last_refresh"] = _now
+        # d. 即座にリロード
+        st.rerun()
+
+    _last_manual = st.session_state.get("last_manual_refresh")
+    if _last_manual:
+        st.caption(f"最終手動更新: {_last_manual}")
+
     st.markdown("---")
 
     # --- LLM ニュース分析セクション ---
@@ -998,7 +1021,8 @@ if _fx_display:
 # =====================================================================
 st.markdown('<div id="summary"></div>', unsafe_allow_html=True)
 st.markdown("### 📈 サマリー")
-st.caption("ポートフォリオ全体の現在価値・損益・リスク指標を一目で把握するセクションです。")
+_summary_as_of = snapshot.get("as_of", "")[:16].replace("T", " ") or "—"
+st.caption(f"ポートフォリオ全体の現在価値・損益・リスク指標を一目で把握するセクションです。｜ 🕐 データ取得: {_summary_as_of}")
 
 positions = snapshot["positions"]
 total_value = snapshot["total_value_jpy"]
@@ -1205,7 +1229,8 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 st.markdown('<div id="health-check"></div>', unsafe_allow_html=True)
 st.markdown("### 🏥 ヘルスチェック")
-st.caption("各銘柄のトレンド・テクニカル指標をチェックし、売りタイミングや注意が必要な銘柄を自動検出します。")
+_hc_as_of = st.session_state.get("last_refresh", "—")[:16]
+st.caption(f"各銘柄のトレンド・テクニカル指標をチェックし、売りタイミングや注意が必要な銘柄を自動検出します。｜ 🕐 データ取得: {_hc_as_of}")
 
 try:
     health_data = load_health_check()
@@ -1535,7 +1560,8 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 st.markdown('<div id="economic-news"></div>', unsafe_allow_html=True)
 st.markdown("### 📰 経済ニュース & PF影響")
-st.caption("主要指数・商品に関する最新ニュースと、ポートフォリオへの影響度を自動分析します。")
+_news_as_of = st.session_state.get("last_refresh", "—")[:16]
+st.caption(f"主要指数・商品に関する最新ニュースと、ポートフォリオへの影響度を自動分析します。｜ 🕐 データ取得: {_news_as_of}")
 
 try:
     # キャッシュキー用にシンボルリストを文字列化
@@ -1830,7 +1856,8 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 st.markdown('<div id="total-chart"></div>', unsafe_allow_html=True)
 st.markdown("### 📊 総資産推移")
-st.caption("資産全体の値動きを時系列で確認。ドローダウンやシャープレシオの推移も合わせて表示します。")
+_history_as_of = str(history_df.index[-1])[:10] if not history_df.empty else "—"
+st.caption(f"資産全体の値動きを時系列で確認。ドローダウンやシャープレシオの推移も合わせて表示します。｜ 🕐 最終データ日: {_history_as_of}")
 
 if not history_df.empty:
     # ベンチマーク系列の取得
@@ -1933,11 +1960,12 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # 現在の保有構成
 # =====================================================================
 st.markdown('<div id="holdings"></div>', unsafe_allow_html=True)
+_holdings_as_of = snapshot.get("as_of", "")[:16].replace("T", " ") or "—"
 col_left, col_right = st.columns([3, 2])
 
 with col_left:
     st.markdown("### 🏢 銘柄別 評価額")
-    st.caption("保有銘柄ごとの評価額・損益率を確認。構成比の偏りや損益の大きい銘柄を把握できます。")
+    st.caption(f"保有銘柄ごとの評価額・損益率を確認。構成比の偏りや損益の大きい銘柄を把握できます。｜ 🕐 データ取得: {_holdings_as_of}")
 
     holdings_df = pd.DataFrame([
         {
@@ -2134,9 +2162,9 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 st.markdown('<div id="trade-activity"></div>', unsafe_allow_html=True)
 st.markdown("### 🔄 月次売買アクティビティ")
-st.caption("月ごとの売買件数・金額フローを表示。投資ペースや資金の出入りを振り返るのに便利です。")
-
 trade_act_df = load_trade_activity()
+_trade_as_of = str(trade_act_df.index[-1])[:7] if not trade_act_df.empty else "—"
+st.caption(f"月ごとの売買件数・金額フローを表示。投資ペースや資金の出入りを振り返るのに便利です。｜ 🕐 最終データ月: {_trade_as_of}")
 if not trade_act_df.empty:
     col_flow, col_tbl = st.columns([2, 1])
 
@@ -2161,6 +2189,8 @@ if not trade_act_df.empty:
         )
 else:
     st.info("取引データがありません")
+
+render_trade_form()
 
 st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
