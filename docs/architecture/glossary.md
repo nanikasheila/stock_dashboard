@@ -1,6 +1,6 @@
 # 用語集（Glossary）
 
-最終更新: 2026-02-25
+最終更新: 2026-02-26
 
 本プロジェクトで使用するドメイン固有の用語を定義する。
 コードとドキュメント間で表記が揺れないよう、新しい概念を導入する際は必ずここに追記すること。
@@ -182,3 +182,49 @@ $$\text{Sharpe} = \frac{R_p - R_f}{\sigma_p}$$
 
 `src/core/common.py` の `is_cash(symbol)` で判定する。
 `shares` フィールドが保有金額（例: 100000 = 10万円）として機能する。
+
+---
+
+## Trade Record（取引レコード）
+
+1取引を表す JSON オブジェクト。`data/history/trade/` に永続化される。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `category` | `str` | カテゴリ（常に `"trade"`） |
+| `date` | `str` | 取引日（`YYYY-MM-DD`） |
+| `timestamp` | `str` | 記録日時（ISO 8601） |
+| `symbol` | `str` | ティッカーシンボル |
+| `trade_type` | `str` | 取引種別（`buy` / `sell` / `transfer`） |
+| `shares` | `float` | 株数 |
+| `price` | `float` | 取引単価 |
+| `currency` | `str` | 取引通貨（例: `USD`, `JPY`） |
+| `fx_rate` | `float` | 取引時の JPY 換算レート |
+| `settlement_jpy` | `float` | 決済金額（JPY） |
+| `settlement_usd` | `float` | 決済金額（USD） |
+| `memo` | `str` | 任意メモ |
+| `_saved_at` | `str` | ファイル保存日時（ISO 8601） |
+
+Source of Truth（ADR-002）。CSV と不一致の場合は JSON を正とする。
+
+---
+
+## CQRS（Command Query Responsibility Segregation）
+
+読み取り（Query）と書き込み（Command）の責務を分離する設計パターン。
+
+本プロジェクトでは `data_loader.py`（読み取り）と `trade_writer.py`（書き込み）の分離に適用している（ADR-003）。
+
+| 役割 | モジュール | 説明 |
+|---|---|---|
+| Query（読み取り） | `components/data_loader.py` | ポートフォリオ表示用データの組み立て |
+| Command（書き込み） | `components/trade_writer.py` | 取引の永続化（JSON + CSV） |
+
+---
+
+## filelock（ファイルロック）
+
+マルチプロセス対応のファイルベースロック。Streamlit の複数セッションが同時に CSV を書き換える競合を防止する。
+
+- `components/trade_writer.py` が CSV 書き込み時に使用する。
+- `filelock` ライブラリが未導入の場合は `threading.Lock` にフォールバックする。

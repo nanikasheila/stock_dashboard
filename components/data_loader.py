@@ -581,7 +581,7 @@ def clear_price_cache() -> int:
                 csv_file.unlink()
                 deleted += 1
             except Exception as e:
-                print(f"[data_loader] Cache delete error: {e}")
+                logger.warning("Cache delete error for %s: %s", csv_file, e)
     return deleted
 
 

@@ -1,6 +1,6 @@
 # データフロー
 
-最終更新: 2026-02-25
+最終更新: 2026-02-26
 
 ## 概要
 
@@ -99,6 +99,53 @@ app.py
 
 ---
 
+## 2a. 取引書き込みフロー
+
+### 概要
+
+ダッシュボードから新規取引（買い/売り/転送）を記録する書き込みフロー。
+CQRS パターンにより、読み取り専用の `data_loader.py` と分離されている（ADR-003）。
+
+### フロー
+
+```
+app.py
+  └─ render_trade_form()  ← ユーザー入力
+       │
+       ▼
+components/trade_form.py
+  └─ _handle_submit()  — バリデーション・送信
+       │
+       ▼
+components/trade_writer.py
+  └─ record_trade()
+       │
+       ├─ Step 1: src/data/history_store.save_trade()
+       │    → data/history/trade/YYYY-MM-DD_{type}_{TICKER}.json
+       │    (JSON = Source of Truth, ADR-002)
+       │
+       ├─ Step 2 (buy):  portfolio_manager.add_position()
+       │                   → data/portfolio/portfolio.csv (filelock)
+       │
+       ├─ Step 2 (sell): portfolio_manager.sell_position()
+       │                   → data/portfolio/portfolio.csv (filelock)
+       │
+       └─ Step 2 (transfer): Skip (履歴記録のみ)
+       │
+       ▼
+  st.cache_data.clear() + st.rerun()  — ダッシュボード全体を再描画
+```
+
+### 変換ポイント
+
+| ステップ | 変換内容 |
+|---|---|
+| フォーム入力 → dict | `trade_form` がスキーマに従った取引レコード dict を構築 |
+| dict → JSON ファイル | `history_store.save_trade()` がファイルに書き込む |
+| dict → CSV 行 | `portfolio_manager.add_position()` / `sell_position()` が filelock で CSV を書き換え |
+
+---
+
 ## 3. 株価データフロー
 
 ### 外部 API
@@ -115,6 +162,8 @@ src/data/yahoo_client.py
   │    ミス  → Yahoo Finance API 呼び出し → キャッシュ書込 → 返却
   └─ 返却値: pd.DataFrame（columns: Open, High, Low, Close, Volume）
 ```
+
+**手動更新**: ユーザーが「📥 今すぐ更新」ボタンを押すと `clear_price_cache()` がディスクキャッシュ（`data/cache/price_history/*.csv`）を全削除し、`st.cache_data.clear()` でメモリキャッシュもクリアする。次回アクセス時に Yahoo Finance API から再取得される（ADR-004）。
 
 ### フロー
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from contextlib import AbstractContextManager
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ from src.core.portfolio.portfolio_manager import DEFAULT_CSV_PATH, add_position,
 from src.data.history_store import save_trade as _save_trade
 
 
-def _acquire_csv_lock(csv_path: str):
+def _acquire_csv_lock(csv_path: str) -> AbstractContextManager:
     """Return a context manager that locks the CSV path for writing.
 
     Why: Streamlit can run multiple sessions in the same process, creating
@@ -54,7 +55,7 @@ def record_trade(
     currency: str,
     trade_date: str,
     memo: str = "",
-    fx_rate: float = 0.0,
+    fx_rate: float = 1.0,
     settlement_jpy: float = 0.0,
     settlement_usd: float = 0.0,
     csv_path: str = DEFAULT_CSV_PATH,
@@ -110,6 +111,11 @@ def record_trade(
     trade_type_lower = trade_type.lower()
     if trade_type_lower not in {"buy", "sell", "transfer"}:
         raise ValueError(f"Invalid trade_type: '{trade_type}'. Must be buy, sell, or transfer.")
+
+    if not symbol or not symbol.strip():
+        raise ValueError("symbol is required.")
+    if shares <= 0:
+        raise ValueError(f"shares must be positive, got {shares}.")
 
     # Step 1: Persist JSON (Source of Truth — ADR-002)
     saved_json_path = _save_trade(
