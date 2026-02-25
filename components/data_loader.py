@@ -564,6 +564,27 @@ def _save_prices_cache(prices: pd.DataFrame, period: str) -> None:
         print(f"[data_loader] Cache save error: {e}")
 
 
+def clear_price_cache() -> int:
+    """Delete all disk-cached price CSV files.
+
+    Why: Manual refresh should bypass all cache layers (Streamlit + disk).
+         TTL-based expiry only applies to the automatic refresh cycle;
+         a user-initiated refresh must ignore it entirely.
+    How: Delete all CSV files in the price cache directory so that the
+         next data load triggers a fresh fetch from Yahoo Finance.
+         Returns the count of deleted files for logging/display.
+    """
+    deleted = 0
+    if _PRICE_CACHE_DIR.exists():
+        for csv_file in _PRICE_CACHE_DIR.glob("*.csv"):
+            try:
+                csv_file.unlink()
+                deleted += 1
+            except Exception as e:
+                logger.warning("Cache delete error for %s: %s", csv_file, e)
+    return deleted
+
+
 def _load_prices(symbols: list[str], period: str) -> pd.DataFrame:
     """キャッシュ優先で全銘柄の終値を一括取得.
 
