@@ -26,4 +26,4 @@ data/dashboard_settings.json
 .DS_Store
 Thumbs.db
 
-.worktree/
+.worktrees/
