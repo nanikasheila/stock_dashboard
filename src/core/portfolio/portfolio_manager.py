@@ -6,9 +6,12 @@ real-time pricing, P&L calculation, and structural analysis.
 
 import copy
 import csv
+import logging
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 from src.core.common import is_cash as _is_cash
 from src.core.ticker_utils import (
@@ -59,6 +62,28 @@ _FX_PAIRS = [
     "BRLJPY=X",
     "INRJPY=X",
 ]
+
+
+# ---------------------------------------------------------------------------
+# FxRateProvider Protocol
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class FxRateProvider(Protocol):
+    """Protocol for objects that can retrieve stock/FX price info.
+
+    Why: ``get_fx_rates`` and ``get_snapshot`` accept a ``client`` parameter
+         whose type was previously unspecified. This Protocol makes the
+         expected interface explicit so alternative implementations (mock,
+         caching proxy, etc.) can be verified at type-check time.
+    How: Any object with a ``get_stock_info(symbol) -> dict | None`` method
+         satisfies this protocol. ``yahoo_client`` is the primary provider.
+    """
+
+    def get_stock_info(self, symbol: str) -> dict | None:
+        """Return price info dict for *symbol*, or None on failure."""
+        ...
 
 
 def _fx_symbol_for_currency(currency: str) -> Optional[str]:
@@ -258,7 +283,7 @@ def sell_position(
 # ---------------------------------------------------------------------------
 
 
-def get_fx_rates(client) -> dict:
+def get_fx_rates(client: FxRateProvider) -> dict[str, float]:
     """主要為替レートを取得。
 
     yfinance で USDJPY=X 等を取得。JPYは1.0固定。
@@ -280,9 +305,9 @@ def get_fx_rates(client) -> dict:
             if info is not None and info.get("price") is not None:
                 rates[currency] = float(info["price"])
             else:
-                print(f"[portfolio_manager] Warning: FX rate for {pair} unavailable")
+                logger.warning("FX rate for %s unavailable", pair)
         except Exception as e:
-            print(f"[portfolio_manager] Warning: FX rate fetch error for {pair}: {e}")
+            logger.warning("FX rate fetch error for %s: %s", pair, e)
 
     return rates
 
@@ -294,9 +319,9 @@ def _get_fx_rate_for_currency(
     if currency in fx_rates:
         return fx_rates[currency]
     # Fallback: JPY扱い
-    print(
-        f"[portfolio_manager] Warning: FX rate for {currency} not found, "
-        f"assuming 1.0 (JPY equivalent)"
+    logger.warning(
+        "FX rate for %s not found, assuming 1.0 (JPY equivalent)",
+        currency,
     )
     return 1.0
 
@@ -306,7 +331,7 @@ def _get_fx_rate_for_currency(
 # ---------------------------------------------------------------------------
 
 
-def get_snapshot(csv_path: str, client) -> dict:
+def get_snapshot(csv_path: str, client: FxRateProvider) -> dict:
     """スナップショット生成。
 
     各銘柄について:

@@ -1,7 +1,7 @@
 ---
 description: "アーキテクトエージェントは、システム全体の構造設計・設計判断・非機能要求の評価を支援します。実装は行わず、設計方針と構造的判断を提供します。"
 tools: ["read", "search", "web", "todo"]
-model: Claude Sonnet 4.6 (copilot)
+model: Claude Opus 4.6 (copilot)
 ---
 
 # アーキテクトエージェント
