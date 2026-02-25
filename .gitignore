@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+
+# Data files (user-specific)
+data/cache/
+data/history/
+data/portfolio/
+
+# IDE
+.vscode/
+.idea/
+
+# Settings (user-specific)
+data/dashboard_settings.json
+
+# OS
+.DS_Store
+Thumbs.db
