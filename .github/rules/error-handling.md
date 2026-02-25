@@ -26,6 +26,35 @@
 | マージ 405 | レビュー承認が必要 | ユーザーに報告（リポジトリの保護ルール） |
 | API レート制限 | リクエスト過多 | 30秒待機 → リトライ |
 
+## ワークフロー違反のリカバリ
+
+main ブランチ上で誤ってコード変更を行った場合の復旧手順。
+
+### 手順
+
+```bash
+# 1. 変更を stash に退避（未追跡ファイル含む）
+git stash -u -m "recovery: <作業内容の簡潔な説明>"
+
+# 2. フィーチャーブランチを作成
+git branch <user>/<type>-<description>
+
+# 3. Worktree を作成
+git worktree add .worktrees/<type>-<description> <user>/<type>-<description>
+
+# 4. Worktree に移動して stash を適用
+cd .worktrees/<type>-<description>
+git stash pop
+
+# 5. 通常のコミット・PR フローを続行
+```
+
+### 注意事項
+
+- stash 前に `git status` で変更内容を必ず確認する
+- stash に `-u` オプションを付け、未追跡ファイルも含める
+- リカバリ後は通常の `submit-pull-request` フローに復帰する
+
 ## Issue トラッカーのエラー（オプション: 使用する場合のみ）
 
 | エラー | 原因 | 対処 |

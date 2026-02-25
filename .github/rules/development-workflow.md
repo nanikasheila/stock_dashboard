@@ -6,7 +6,8 @@
 ## 原則
 
 - すべての開発作業は **Worktree 上**で実施する（main ブランチ直接編集禁止）
-- 各作業は **Issue 起票 → 設計 → 実装 → テスト → レビュー → PR → クリーンアップ** のフローで進める
+- **コード変更前に必ず `rules/git-preflight.md` のチェックを実行する**
+- 各作業は **プリフライト → Issue 起票 → 設計 → 実装 → テスト → レビュー → PR → クリーンアップ** のフローで進める
 - プロジェクト固有の設定は `.github/settings.json` から取得する
 - Issue トラッカーの利用はオプション（`settings.json` の `issueTracker.provider` で制御）
 - Git の利用は必須、GitHub の利用は推奨
@@ -14,6 +15,7 @@
 ## フロー概要
 
 ```
+0. プリフライトチェック          → rules/git-preflight.md（全変更で必須）
 1. Issue 起票 & Worktree 作成   → skills/start-feature/（Issue はオプション）
 2. 影響分析・設計
    2a. 影響分析                 → agents/manager.agent.md（全変更で実施）
@@ -25,6 +27,14 @@
 7. ドキュメント・ルール更新     → agents/writer.agent.md（必要な場合）
 8. クリーンアップ               → skills/cleanup-worktree/
 ```
+
+## 0. プリフライトチェック（必須）
+
+**コード変更を伴うすべてのタスクの最初に実行する。スキップ厳禁。**
+
+- `rules/git-preflight.md` に従い、Git 状態をチェックする
+- main ブランチにいる場合、またはworktree外で作業している場合は、先にステップ1を実行する
+- チェックに通過して初めて実装作業を開始できる
 
 ## 1. Issue 起票 & Worktree 作成
 
