@@ -43,6 +43,7 @@ from components.data_loader import (
     clear_price_cache,
 )
 from components.settings_store import load_settings, save_settings, DEFAULTS
+from components.trade_form import render_trade_form
 from components.llm_analyzer import (
     AVAILABLE_MODELS as LLM_MODELS,
     CACHE_TTL_OPTIONS as LLM_CACHE_OPTIONS,
@@ -2188,6 +2189,8 @@ if not trade_act_df.empty:
         )
 else:
     st.info("取引データがありません")
+
+render_trade_form()
 
 st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
