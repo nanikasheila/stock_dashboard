@@ -28,7 +28,8 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 _DEFAULT_HISTORY_DIR = str(Path(_PROJECT_ROOT) / "data" / "history")
-_PRICE_CACHE_DIR = Path(_PROJECT_ROOT) / "data" / "cache" / "price_history"
+# Why: Cache path is centralized in src.core.paths to avoid hardcoded duplication.
+from src.core.paths import PRICE_CACHE_DIR as _PRICE_CACHE_DIR
 _CACHE_TTL_SECONDS = 4 * 3600  # 4 hours
 
 from src.core.portfolio.portfolio_manager import (

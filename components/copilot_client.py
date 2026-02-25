@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -79,16 +80,24 @@ class CLICallLog:
 
 
 _execution_logs: list[CLICallLog] = []
+_log_lock = threading.Lock()
 
 
 def get_execution_logs() -> list[CLICallLog]:
-    """記録済みの実行ログを返す（新しい順）."""
-    return list(reversed(_execution_logs))
+    """記録済みの実行ログを返す（新しい順）.
+
+    Why: Streamlit はマルチセッションでプロセスを共有するため、
+         ロックで読み取り一貫性を保証する。
+    How: _log_lock で排他制御し、スナップショットを逆順で返す。
+    """
+    with _log_lock:
+        return list(reversed(_execution_logs))
 
 
 def clear_execution_logs() -> None:
     """実行ログをクリアする."""
-    _execution_logs.clear()
+    with _log_lock:
+        _execution_logs.clear()
 
 
 def _record_log(
@@ -101,7 +110,11 @@ def _record_log(
     error: str,
     source: str,
 ) -> None:
-    """実行ログを追記する."""
+    """実行ログを追記する.
+
+    Why: 複数スレッド/セッションから同時書き込みされる可能性がある。
+    How: _log_lock で排他制御し、append + 上限チェックを安全に行う。
+    """
     entry = CLICallLog(
         timestamp=time.time(),
         model=model,
@@ -113,10 +126,11 @@ def _record_log(
         error=error[:300] if error else "",
         source=source,
     )
-    _execution_logs.append(entry)
-    # 上限を超えたら古いものを破棄
-    while len(_execution_logs) > MAX_LOG_ENTRIES:
-        _execution_logs.pop(0)
+    with _log_lock:
+        _execution_logs.append(entry)
+        # 上限を超えたら古いものを破棄
+        while len(_execution_logs) > MAX_LOG_ENTRIES:
+            _execution_logs.pop(0)
 
 
 # =====================================================================

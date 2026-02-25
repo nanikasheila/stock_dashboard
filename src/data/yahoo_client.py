@@ -1,6 +1,7 @@
 """Yahoo Finance API wrapper with JSON file-based caching."""
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timedelta
@@ -11,8 +12,11 @@ import pandas as pd
 import yfinance as yf
 from yfinance import EquityQuery
 
+logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cache"
+# Why: Cache path is centralized in src.core.paths to avoid hardcoded duplication.
+from src.core.paths import CACHE_DIR
+
 CACHE_TTL_HOURS = int(os.environ.get("YFINANCE_CACHE_TTL_HOURS", "1"))
 
 
@@ -167,7 +171,7 @@ def get_stock_info(symbol: str) -> Optional[dict]:
         return result
 
     except Exception as e:
-        print(f"[yahoo_client] Error fetching {symbol}: {e}")
+        logger.warning("Error fetching %s: %s", symbol, e)
         return None
 
 
@@ -235,7 +239,8 @@ def _try_get_field(df: Any, field_names: list[str]) -> Optional[float]:
                 if value is not None and value == value:  # NaN check
                     return float(value)
         return None
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to extract field from DataFrame: %s", exc)
         return None
 
 
@@ -261,7 +266,8 @@ def _try_get_history(df, field_names: list[str], max_periods: int = 4) -> list[f
                 if values:
                     return values
         return []
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to extract history from DataFrame: %s", exc)
         return []
 
 
@@ -307,7 +313,8 @@ def _build_dividend_history_from_actions(
                 fiscal_years.append(int(year))
 
         return amounts, fiscal_years
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to build dividend history from actions: %s", exc)
         return [], []
 
 
@@ -344,8 +351,8 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
             hist = ticker.history(period="2y")
             if hist is not None and not hist.empty and "Close" in hist.columns:
                 price_history = [float(v) for v in hist["Close"].tolist()]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to fetch price history for %s: %s", symbol, exc)
 
         # --- Balance sheet: equity ratio, total_assets, equity_history ---
         equity_ratio: Optional[float] = None
@@ -377,8 +384,8 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                     "StockholdersEquity",
                     "Total Equity Gross Minority Interest",
                 ])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to fetch balance sheet for %s: %s", symbol, exc)
 
         # --- Cash flow ---
         operating_cashflow: Optional[float] = None
@@ -439,10 +446,10 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                         col = cf.columns[i]
                         if hasattr(col, "year"):
                             cashflow_fiscal_years.append(int(col.year))
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except Exception as exc:
+                logger.debug("Failed to extract fiscal years from cashflow: %s", exc)
+        except Exception as exc:
+            logger.debug("Failed to fetch cashflow for %s: %s", symbol, exc)
 
         # KIK-388: Fallback to ticker.dividends when cashflow dividend history is sparse
         if len(dividend_paid_history) < 2:
@@ -510,8 +517,8 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                         eps_growth = float(
                             (eps_current - eps_previous) / abs(eps_previous)
                         )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to fetch income statement for %s: %s", symbol, exc)
 
         # --- Additional info fields ---
         total_debt: Optional[float] = None
@@ -539,8 +546,8 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                 trailing_eps_info = _safe_get(info, "trailingEps")
                 if trailing_eps_info is not None:
                     eps_current = float(trailing_eps_info)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to fetch additional info for %s: %s", symbol, exc)
 
         # 4. Merge into base dict
         result = dict(base)  # shallow copy to avoid mutating cached base
@@ -581,7 +588,7 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         return result
 
     except Exception as e:
-        print(f"[yahoo_client] Error fetching detail for {symbol}: {e}")
+        logger.warning("Error fetching detail for %s: %s", symbol, e)
         return None
 
 
@@ -638,26 +645,26 @@ def screen_stocks(
                 page_size = min(size, remaining)
 
             if total is not None:
-                print(f"[yahoo_client] Fetching page {page}... ({len(all_quotes)}/{total})")
+                logger.info("Fetching page %d... (%d/%d)", page, len(all_quotes), total)
             else:
-                print(f"[yahoo_client] Fetching page {page}...")
+                logger.info("Fetching page %d...", page)
 
             response = yf.screen(
                 query, size=page_size, offset=offset,
                 sortField=sort_field, sortAsc=sort_asc,
             )
             if response is None:
-                print("[yahoo_client] yf.screen() returned None")
+                logger.warning("yf.screen() returned None")
                 break
 
             quotes = response.get("quotes", [])
             if not isinstance(quotes, list):
-                print(f"[yahoo_client] Unexpected quotes type: {type(quotes)}")
+                logger.warning("Unexpected quotes type: %s", type(quotes))
                 break
 
             if total is None:
                 total = response.get("total", 0)
-                print(f"[yahoo_client] Total matching stocks: {total}")
+                logger.info("Total matching stocks: %d", total)
 
             if not quotes:
                 break
@@ -674,11 +681,11 @@ def screen_stocks(
             page += 1
             time.sleep(1)  # rate-limit between pages
 
-        print(f"[yahoo_client] Fetched {len(all_quotes)} stocks total")
+        logger.info("Fetched %d stocks total", len(all_quotes))
         return all_quotes
 
     except Exception as e:
-        print(f"[yahoo_client] Error in screen_stocks: {e}")
+        logger.warning("Error in screen_stocks: %s", e)
         return all_quotes if all_quotes else []
 
 
@@ -700,17 +707,17 @@ def get_price_history(symbol: str, period: str = "1y") -> Optional[pd.DataFrame]
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=period)
         if hist is None or hist.empty:
-            print(f"[yahoo_client] No price history for {symbol}")
+            logger.info("No price history for %s", symbol)
             return None
         # Keep only the standard OHLCV columns
         expected_cols = ["Open", "High", "Low", "Close", "Volume"]
         available_cols = [c for c in expected_cols if c in hist.columns]
         if "Close" not in available_cols:
-            print(f"[yahoo_client] No 'Close' column in history for {symbol}")
+            logger.warning("No 'Close' column in history for %s", symbol)
             return None
         return hist[available_cols]
     except Exception as e:
-        print(f"[yahoo_client] Error fetching price history for {symbol}: {e}")
+        logger.warning("Error fetching price history for %s: %s", symbol, e)
         return None
 
 
@@ -743,7 +750,7 @@ def get_close_prices_batch(
         tickers = symbols if len(symbols) > 1 else symbols[0]
         data = yf.download(tickers, period=period, progress=False)
         if data is None or data.empty:
-            print(f"[yahoo_client] No batch price data for {symbols}")
+            logger.info("No batch price data for %s", symbols)
             return None
 
         # --- Single ticker: flat columns ---
@@ -786,7 +793,7 @@ def get_close_prices_batch(
 
         return None
     except Exception as e:
-        print(f"[yahoo_client] Error in batch price fetch: {e}")
+        logger.warning("Error in batch price fetch: %s", e)
         return None
 
 
@@ -881,7 +888,7 @@ def get_macro_indicators() -> list[dict]:
                 "is_point_diff": is_point,
             })
         except Exception as e:
-            print(f"[yahoo_client] Error fetching macro indicator {name}: {e}")
+            logger.warning("Error fetching macro indicator %s: %s", name, e)
             continue
 
     return results
@@ -937,5 +944,5 @@ def get_stock_news(symbol: str, count: int = 10) -> list[dict]:
             results.append(news_item)
         return results
     except Exception as e:
-        print(f"[yahoo_client] Error fetching news for {symbol}: {e}")
+        logger.warning("Error fetching news for %s: %s", symbol, e)
         return []

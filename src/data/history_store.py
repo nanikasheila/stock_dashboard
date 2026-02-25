@@ -1,11 +1,14 @@
 """History store -- save and load screening/report/trade/health/research JSON files."""
 
 import json
+import logging
 import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +111,8 @@ def _build_embedding(category: str, **kwargs) -> tuple[str, list[float] | None]:
         text = builder()
         emb = embedding_client.get_embedding(text) if text else None
         return (text, emb)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Embedding generation failed for %s: %s", category, exc)
         return ("", None)
 
 
@@ -164,8 +168,8 @@ def save_screening(
         )
         merge_screen(today, preset, region, len(results), symbols,
                      semantic_summary=sem_summary, embedding=emb)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Neo4j sync skipped: %s", exc)
 
     return str(path.resolve())
 
@@ -227,8 +231,8 @@ def save_report(
             roe=data.get("roe", 0), market_cap=data.get("market_cap", 0),
             semantic_summary=sem_summary, embedding=emb,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Neo4j sync skipped: %s", exc)
 
     return str(path.resolve())
 
@@ -299,8 +303,8 @@ def save_trade(
             shares=shares, price=price, currency=currency, memo=memo,
             semantic_summary=sem_summary, embedding=emb,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Neo4j sync skipped: %s", exc)
 
     return str(path.resolve())
 
@@ -359,73 +363,11 @@ def save_health(
         )
         merge_health(today, summary, symbols,
                      semantic_summary=sem_summary, embedding=emb)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Neo4j sync skipped: %s", exc)
 
     return str(path.resolve())
 
-
-def _build_research_summary(research_type: str, result: dict) -> str:
-    """Build a summary string from research result for Neo4j storage (KIK-416).
-
-    Extracts key information from grok_research and other fields to create
-    a concise summary (max 200 chars) for GraphRAG queries.
-    """
-    grok = result.get("grok_research")
-    if grok is None or not isinstance(grok, dict):
-        grok = {}
-
-    parts: list[str] = []
-
-    if research_type == "stock":
-        # Name + first news headline + sentiment score + value_score
-        name = result.get("name", "")
-        if name:
-            parts.append(name)
-        news = grok.get("recent_news") or result.get("news") or []
-        if news and isinstance(news, list) and isinstance(news[0], (str, dict)):
-            headline = news[0] if isinstance(news[0], str) else news[0].get("title", "")
-            headline = headline.split("<")[0].strip()  # strip grok citation tags
-            if headline:
-                parts.append(headline[:80])
-        xs = grok.get("x_sentiment") or result.get("x_sentiment") or {}
-        if isinstance(xs, dict) and xs.get("score") is not None:
-            parts.append(f"Xセンチメント{xs['score']}")
-        vs = result.get("value_score")
-        if vs is not None:
-            parts.append(f"スコア{vs}")
-
-    elif research_type == "market":
-        # price_action + sentiment score
-        pa = grok.get("price_action", "")
-        if pa:
-            pa_clean = pa.split("<")[0].strip()
-            parts.append(pa_clean[:120])
-        sent = grok.get("sentiment") or {}
-        if isinstance(sent, dict) and sent.get("score") is not None:
-            parts.append(f"センチメント{sent['score']}")
-
-    elif research_type == "industry":
-        # trends
-        trends = grok.get("trends", "")
-        if trends:
-            trends_clean = trends.split("<")[0].strip()
-            parts.append(trends_clean[:120])
-
-    elif research_type == "business":
-        # name + overview
-        name = result.get("name", "")
-        if name:
-            parts.append(name)
-        overview = grok.get("overview", "")
-        if overview:
-            overview_clean = overview.split("<")[0].strip()
-            parts.append(overview_clean[:120])
-
-    summary = ". ".join(parts)
-    if len(summary) > 200:
-        summary = summary[:197] + "..."
-    return summary
 
 
 def save_research(
@@ -477,7 +419,11 @@ def save_research(
         from src.data.graph_store import merge_research_full, merge_stock, link_research_supersedes
         if research_type in ("stock", "business"):
             merge_stock(symbol=target, name=result.get("name", ""))
-        summary = result.get("summary", "") or _build_research_summary(research_type, result)
+        # Why: summary_builder に一本化し、history_store 内の重複実装を排除
+        from src.data import summary_builder as _sb
+        summary = result.get("summary", "") or _sb.build_research_summary(
+            research_type, target, result,
+        )
         sem_summary, emb = _build_embedding(
             "research", research_type=research_type, target=target, result=result,
         )
@@ -490,8 +436,8 @@ def save_research(
             semantic_summary=sem_summary, embedding=emb,
         )
         link_research_supersedes(research_type, target)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Neo4j sync skipped: %s", exc)
 
     return str(path.resolve())
 
@@ -545,8 +491,8 @@ def save_market_context(
             grok_research=context.get("grok_research"),
             semantic_summary=sem_summary, embedding=emb,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Neo4j sync skipped: %s", exc)
 
     return str(path.resolve())
 
