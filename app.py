@@ -40,6 +40,7 @@ from components.data_loader import (
     get_benchmark_series,
     run_dashboard_health_check,
     fetch_economic_news,
+    clear_price_cache,
 )
 from components.settings_store import load_settings, save_settings, DEFAULTS
 from components.llm_analyzer import (
@@ -729,6 +730,27 @@ with _tab_settings:
         help="選択した間隔でダッシュボードを自動リロードします",
     )
     auto_refresh_sec = dict(_REFRESH_OPTIONS)[auto_refresh_label]
+
+    # --- 手動更新ボタン ---
+    if st.button("📥 今すぐ更新", help="キャッシュを無視してデータを即座に再取得します"):
+        # a. Streamlit インメモリキャッシュをクリア
+        load_snapshot.clear()
+        load_history.clear()
+        load_trade_activity.clear()
+        load_health_check.clear()
+        load_economic_news.clear()
+        # b. ディスクキャッシュ（価格履歴 CSV）を削除
+        _deleted = clear_price_cache()
+        # c. 手動更新タイムスタンプを記録
+        _now = time.strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state["last_manual_refresh"] = _now
+        st.session_state["last_refresh"] = _now
+        # d. 即座にリロード
+        st.rerun()
+
+    _last_manual = st.session_state.get("last_manual_refresh")
+    if _last_manual:
+        st.caption(f"最終手動更新: {_last_manual}")
 
     st.markdown("---")
 
