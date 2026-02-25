@@ -10,13 +10,12 @@ Alert levels:
   - exit: dead cross / multiple indicator deterioration / trend collapse
 """
 
-import math
-
 import numpy as np
 import pandas as pd
 from typing import Optional
 
 from src.core.common import is_cash as _is_cash, is_etf as _is_etf
+from src.core.value_trap import _finite_or_none
 from src.core.screening.indicators import (
     calculate_shareholder_return,
     calculate_shareholder_return_history,
@@ -213,22 +212,6 @@ def check_change_quality(stock_detail: dict) -> dict:
         "quality_label": quality_label,
         "is_etf": False,
     }
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-
-def _finite_or_none(v):
-    """Return v if finite number, else None."""
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        return None if (math.isnan(f) or math.isinf(f)) else f
-    except (TypeError, ValueError):
-        return None
 
 
 # ---------------------------------------------------------------------------
