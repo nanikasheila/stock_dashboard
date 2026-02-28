@@ -34,6 +34,7 @@ from src.core.portfolio.portfolio_manager import (
     merge_positions,
     save_portfolio,
     sell_position,
+    update_cash_position,
 )
 
 # ---------------------------------------------------------------------------
@@ -633,3 +634,86 @@ class TestAnalyzeConcentration:
             # fallback to region key was used
             result["region_hhi"] >= 0.0
         )
+
+
+# ---------------------------------------------------------------------------
+# update_cash_position
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateCashPosition:
+    """update_cash_position() のテスト."""
+
+    def test_adds_to_existing_jpy_cash(self, tmp_path: Path):
+        """既存 JPY.CASH がある場合に売却受取金が加算される."""
+        csv_file = tmp_path / "portfolio.csv"
+        _write_csv(csv_file, ["JPY.CASH,1,10000.0,JPY,2026-01-01,預り金"])
+        result = update_cash_position(
+            str(csv_file), "JPY", 50000.0, "2026-02-28"
+        )
+        assert result["cost_price"] == pytest.approx(60000.0)
+        assert result["purchase_date"] == "2026-02-28"
+        # Verify persistence
+        loaded = load_portfolio(str(csv_file))
+        assert loaded[0]["cost_price"] == pytest.approx(60000.0)
+
+    def test_subtracts_from_existing_usd_cash(self, tmp_path: Path):
+        """既存 USD.CASH から購入支払いが減算される."""
+        csv_file = tmp_path / "portfolio.csv"
+        _write_csv(csv_file, ["USD.CASH,1,5000.0,USD,2026-01-01,外貨預り金"])
+        result = update_cash_position(
+            str(csv_file), "USD", -2000.0, "2026-02-28"
+        )
+        assert result["cost_price"] == pytest.approx(3000.0)
+
+    def test_allows_negative_balance(self, tmp_path: Path):
+        """残高不足時にエラーにならず負の cost_price で保存される."""
+        csv_file = tmp_path / "portfolio.csv"
+        _write_csv(csv_file, ["JPY.CASH,1,1000.0,JPY,2026-01-01,預り金"])
+        result = update_cash_position(
+            str(csv_file), "JPY", -5000.0, "2026-02-28"
+        )
+        assert result["cost_price"] == pytest.approx(-4000.0)
+
+    def test_creates_cash_row_when_not_exists(self, tmp_path: Path):
+        """該当 .CASH 行が存在しない場合に新規行が作成される."""
+        csv_file = tmp_path / "portfolio.csv"
+        _write_csv(csv_file, ["VTI,10,200,USD,2026-01-01,"])
+        result = update_cash_position(
+            str(csv_file), "USD", 3000.0, "2026-02-28"
+        )
+        assert result["symbol"] == "USD.CASH"
+        assert result["shares"] == 1
+        assert result["cost_price"] == pytest.approx(3000.0)
+        # The other position should still be there
+        loaded = load_portfolio(str(csv_file))
+        assert len(loaded) == 2
+
+    def test_eur_cash_works(self, tmp_path: Path):
+        """JPY/USD 以外の通貨でも正しく更新される."""
+        csv_file = tmp_path / "portfolio.csv"
+        _write_csv(csv_file, [])
+        result = update_cash_position(
+            str(csv_file), "EUR", 1500.0, "2026-02-28"
+        )
+        assert result["symbol"] == "EUR.CASH"
+        assert result["cost_price"] == pytest.approx(1500.0)
+
+    def test_zero_delta_no_change(self, tmp_path: Path):
+        """amount_delta=0 で cost_price が変化しないこと."""
+        csv_file = tmp_path / "portfolio.csv"
+        _write_csv(csv_file, ["JPY.CASH,1,10000.0,JPY,2026-01-01,預り金"])
+        result = update_cash_position(
+            str(csv_file), "JPY", 0.0, "2026-02-28"
+        )
+        assert result["cost_price"] == pytest.approx(10000.0)
+
+    def test_creates_negative_cash_row_for_buy_without_existing(self, tmp_path: Path):
+        """既存 .CASH がない状態で購入すると負の残高で新規作成される."""
+        csv_file = tmp_path / "portfolio.csv"
+        _write_csv(csv_file, [])
+        result = update_cash_position(
+            str(csv_file), "JPY", -50000.0, "2026-02-28"
+        )
+        assert result["symbol"] == "JPY.CASH"
+        assert result["cost_price"] == pytest.approx(-50000.0)
