@@ -1,0 +1,31 @@
+# pre-commit / pre-push フック設定
+#
+# Why: push 前に CI と同等のチェックをローカルで実行し、
+#      CI 失敗のフィードバックループを短縮する。
+# How: commit 時に ruff (lint + format)、push 時に pytest を実行。
+#      ruff は公式フックを使い、pytest はローカル定義で実行。
+#
+# セットアップ: pre-commit install && pre-commit install --hook-type pre-push
+# 手動実行:     pre-commit run --all-files
+
+repos:
+  # ── ruff: lint + format (commit 時) ─────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.2
+    hooks:
+      - id: ruff
+        name: ruff check
+        args: [--fix]
+      - id: ruff-format
+        name: ruff format
+
+  # ── pytest: テスト (push 時) ────────────────────────────────
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: python -m pytest tests/ -q --tb=short
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]

@@ -1135,7 +1135,8 @@ class TestTopWorstPerformers:
             },
             index=dates,
         )
-        df.attrs["_shares_df"] = shares_df
+        df.attrs["_shares_index"] = shares_df.index.strftime("%Y-%m-%d").tolist()
+        df.attrs["_shares_data"] = shares_df.to_dict(orient="list")
 
         result = compute_top_worst_performers(df, top_n=3)
         top = result["top"]
@@ -1161,7 +1162,8 @@ class TestTopWorstPerformers:
             },
             index=dates,
         )
-        df.attrs["_shares_df"] = shares_df
+        df.attrs["_shares_index"] = shares_df.index.strftime("%Y-%m-%d").tolist()
+        df.attrs["_shares_data"] = shares_df.to_dict(orient="list")
 
         result = compute_top_worst_performers(df, top_n=3)
         top = result["top"]
@@ -1179,7 +1181,7 @@ class TestTopWorstPerformers:
             },
             index=dates,
         )
-        # attrs に _shares_df を設定しない
+        # attrs に _shares_data/_shares_index を設定しない
         result = compute_top_worst_performers(df, top_n=3)
         assert result["top"][0]["change_pct"] == pytest.approx(10.0, abs=0.01)
 
@@ -1201,7 +1203,8 @@ class TestTopWorstPerformers:
             },
             index=dates,
         )
-        df.attrs["_shares_df"] = shares_df
+        df.attrs["_shares_index"] = shares_df.index.strftime("%Y-%m-%d").tolist()
+        df.attrs["_shares_data"] = shares_df.to_dict(orient="list")
 
         result = compute_top_worst_performers(df, top_n=2)
         assert result["top"][0]["symbol"] == "AAA"

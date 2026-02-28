@@ -923,7 +923,12 @@ def build_portfolio_history(
             if _sz:
                 _shares_raw = _shares_raw.drop(columns=_sz)
         _shares_raw = _shares_raw.rename(columns=label_map)
-        result_df.attrs["_shares_df"] = _shares_raw
+        # Why: Streamlit serializes DataFrame.attrs to JSON.
+        #      Storing a DataFrame in attrs causes a UserWarning.
+        # How: Store index + data as plain dicts (JSON-serializable)
+        #      and reconstruct the DataFrame on the consumer side.
+        result_df.attrs["_shares_index"] = _shares_raw.index.strftime("%Y-%m-%d").tolist()
+        result_df.attrs["_shares_data"] = _shares_raw.to_dict(orient="list")
 
     return result_df
 
@@ -1198,8 +1203,13 @@ def compute_top_worst_performers(
 
     # Why: 評価額 = 株数 × 単価 × 為替 のため、株数変動があると
     #      前日比が株価変動ではなくポジション変動を反映してしまう。
-    # How: _shares_df があれば株数で割って正規化し、純粋な価格騰落率を算出。
-    shares_df = history_df.attrs.get("_shares_df")
+    # How: _shares_data / _shares_index があれば DataFrame を復元し
+    #      株数で割って正規化し、純粋な価格騰落率を算出。
+    _s_data = history_df.attrs.get("_shares_data")
+    _s_index = history_df.attrs.get("_shares_index")
+    shares_df: pd.DataFrame | None = None
+    if _s_data and _s_index:
+        shares_df = pd.DataFrame(_s_data, index=pd.to_datetime(_s_index))
     if shares_df is not None and len(shares_df) >= 2:
         latest_shares = shares_df.iloc[-1]
         prev_shares = shares_df.iloc[-2]

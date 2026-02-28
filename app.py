@@ -1113,8 +1113,8 @@ if health_data is not None:
                 ).map(
                     lambda v: (
                         "color: #4ade80"
-                        if isinstance(v, (int, float)) and v > 0
-                        else ("color: #f87171" if isinstance(v, (int, float)) and v < 0 else "")
+                        if isinstance(v, int | float) and v > 0
+                        else ("color: #f87171" if isinstance(v, int | float) and v < 0 else "")
                     ),
                     subset=["含み損益(%)"],
                 ),
@@ -1147,7 +1147,7 @@ if health_data is not None:
                         if isinstance(ind_val, bool):
                             emoji = "✅" if ind_val else "❌"
                             ind_parts.append(f"{emoji} {label}")
-                        elif isinstance(ind_val, (int, float)):
+                        elif isinstance(ind_val, int | float):
                             emoji = "✅" if ind_val > 0 else "❌"
                             ind_parts.append(f"{emoji} {label}")
 
@@ -1397,7 +1397,8 @@ if econ_news:
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
                 _title_html = (
                     f'<a href="{_link}" target="_blank" rel="noopener noreferrer">{_safe_title}</a>'
-                    if _link else _safe_title
+                    if _link
+                    else _safe_title
                 )
 
                 # 発行元・日時
@@ -1428,7 +1429,8 @@ if econ_news:
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
                 _title_html = (
                     f'<a href="{_link}" target="_blank" rel="noopener noreferrer">{_safe_title}</a>'
-                    if _link else _safe_title
+                    if _link
+                    else _safe_title
                 )
                 _pub = html.escape(news_item.get("publisher", ""))
                 _time = news_item.get("publish_time", "")
@@ -1640,8 +1642,8 @@ with col_left:
             .map(
                 lambda v: (
                     "color: #4ade80"
-                    if isinstance(v, (int, float)) and v > 0
-                    else ("color: #f87171" if isinstance(v, (int, float)) and v < 0 else "")
+                    if isinstance(v, int | float) and v > 0
+                    else ("color: #f87171" if isinstance(v, int | float) and v < 0 else "")
                 ),
                 subset=["損益(円)"],
             ),

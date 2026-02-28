@@ -972,7 +972,7 @@ def get_stock_news(symbol: str, count: int = 10) -> list[dict]:
                 publish_time = item.get("providerPublishTime")
 
             # Handle providerPublishTime as unix timestamp
-            if isinstance(publish_time, (int, float)):
+            if isinstance(publish_time, int | float):
                 publish_time = datetime.fromtimestamp(publish_time).isoformat()
 
             news_item = {
