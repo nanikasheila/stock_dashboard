@@ -22,6 +22,11 @@ data/portfolio/
 # Settings (user-specific)
 data/dashboard_settings.json
 
+# Environment variables (secrets)
+.env
+.env.*
+!.env.example
+
 # OS
 .DS_Store
 Thumbs.db

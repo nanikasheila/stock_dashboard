@@ -7,13 +7,11 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
-import pytest
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 import components.charts as charts
-
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -86,12 +84,20 @@ def _make_positions() -> list[dict]:
     """保有ポジション dict のリストを生成するヘルパー."""
     return [
         {
-            "symbol": "VTI", "name": "Vanguard Total", "sector": "Diversified",
-            "evaluation_jpy": 300_000.0, "currency": "USD", "pnl_pct": 15.0,
+            "symbol": "VTI",
+            "name": "Vanguard Total",
+            "sector": "Diversified",
+            "evaluation_jpy": 300_000.0,
+            "currency": "USD",
+            "pnl_pct": 15.0,
         },
         {
-            "symbol": "7203.T", "name": "トヨタ", "sector": "Consumer Cyclical",
-            "evaluation_jpy": 200_000.0, "currency": "JPY", "pnl_pct": -3.0,
+            "symbol": "7203.T",
+            "name": "トヨタ",
+            "sector": "Consumer Cyclical",
+            "evaluation_jpy": 200_000.0,
+            "currency": "JPY",
+            "pnl_pct": -3.0,
         },
     ]
 
@@ -171,9 +177,7 @@ class TestBuildTotalChart:
             index=pd.date_range("2024-01-01", periods=10, freq="D"),
         )
         fig_without_bm = charts.build_total_chart(df, chart_style="折れ線")
-        fig_with_bm = charts.build_total_chart(
-            df, chart_style="折れ線", benchmark_series=bm, benchmark_label="SPY"
-        )
+        fig_with_bm = charts.build_total_chart(df, chart_style="折れ線", benchmark_series=bm, benchmark_label="SPY")
         assert len(fig_with_bm.data) == len(fig_without_bm.data) + 1
 
 

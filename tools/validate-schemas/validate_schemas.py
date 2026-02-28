@@ -11,7 +11,6 @@ How: Use jsonschema library if available, fall back to basic structural checks.
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 def find_github_dir() -> Path:
@@ -30,7 +29,7 @@ def find_github_dir() -> Path:
     sys.exit(1)
 
 
-def load_json(file_path: Path) -> Optional[dict]:
+def load_json(file_path: Path) -> dict | None:
     """Load and parse a JSON file, returning None on failure.
 
     Why: Graceful error handling for missing or malformed files.
@@ -77,25 +76,17 @@ def validate_settings(github_dir: Path) -> list[str]:
         )
         if allowed_providers and provider not in allowed_providers:
             errors.append(
-                f"settings.json: issueTracker.provider '{provider}' "
-                f"not in allowed values {allowed_providers}"
+                f"settings.json: issueTracker.provider '{provider}' not in allowed values {allowed_providers}"
             )
 
     # Validate project.language enum
     language = settings.get("project", {}).get("language")
     if language is not None:
         allowed_languages = (
-            schema.get("properties", {})
-            .get("project", {})
-            .get("properties", {})
-            .get("language", {})
-            .get("enum", [])
+            schema.get("properties", {}).get("project", {}).get("properties", {}).get("language", {}).get("enum", [])
         )
         if allowed_languages and language not in allowed_languages:
-            errors.append(
-                f"settings.json: project.language '{language}' "
-                f"not in allowed values {allowed_languages}"
-            )
+            errors.append(f"settings.json: project.language '{language}' not in allowed values {allowed_languages}")
 
     return errors
 
@@ -119,13 +110,9 @@ def validate_gate_profiles(github_dir: Path) -> list[str]:
     # Expected gate keys (from board.schema.json)
     expected_gate_keys: set[str] = set()
     if board_schema is not None:
-        gates_props = (
-            board_schema.get("properties", {})
-            .get("gates", {})
-            .get("properties", {})
-        )
+        gates_props = board_schema.get("properties", {}).get("gates", {}).get("properties", {})
         # Board uses short names (e.g., "analysis"), gate-profiles uses suffixed names (e.g., "analysis_gate")
-        expected_gate_keys = {f"{key}_gate" for key in gates_props.keys()}
+        expected_gate_keys = {f"{key}_gate" for key in gates_props}
 
     for profile_name, profile in profiles.items():
         if not isinstance(profile, dict):
@@ -135,15 +122,11 @@ def validate_gate_profiles(github_dir: Path) -> list[str]:
         # Check each gate has required fields
         for gate_name, gate_config in profile.items():
             if not isinstance(gate_config, dict):
-                errors.append(
-                    f"gate-profiles.json: {profile_name}.{gate_name} is not an object"
-                )
+                errors.append(f"gate-profiles.json: {profile_name}.{gate_name} is not an object")
                 continue
 
             if "required" not in gate_config:
-                errors.append(
-                    f"gate-profiles.json: {profile_name}.{gate_name} missing 'required' field"
-                )
+                errors.append(f"gate-profiles.json: {profile_name}.{gate_name} missing 'required' field")
 
             # Cross-reference with board schema
             if expected_gate_keys and gate_name not in expected_gate_keys:
@@ -160,10 +143,7 @@ def validate_gate_profiles(github_dir: Path) -> list[str]:
                 continue
             missing_gates = expected_gate_keys - set(profile.keys())
             if missing_gates:
-                errors.append(
-                    f"gate-profiles.json: profile '{profile_name}' missing gates: "
-                    f"{sorted(missing_gates)}"
-                )
+                errors.append(f"gate-profiles.json: profile '{profile_name}' missing gates: {sorted(missing_gates)}")
 
     return errors
 
@@ -186,17 +166,22 @@ def validate_board_schema(github_dir: Path) -> list[str]:
     properties = board_schema.get("properties", {})
     for field in required:
         if field not in properties:
-            errors.append(
-                f"board.schema.json: required field '{field}' "
-                f"not defined in properties"
-            )
+            errors.append(f"board.schema.json: required field '{field}' not defined in properties")
 
     # Validate flow_state enum
     flow_states = properties.get("flow_state", {}).get("enum", [])
     expected_states = [
-        "initialized", "analyzing", "designing", "planned",
-        "implementing", "testing", "reviewing", "approved",
-        "documenting", "submitting", "completed",
+        "initialized",
+        "analyzing",
+        "designing",
+        "planned",
+        "implementing",
+        "testing",
+        "reviewing",
+        "approved",
+        "documenting",
+        "submitting",
+        "completed",
     ]
     if flow_states and set(flow_states) != set(expected_states):
         missing = set(expected_states) - set(flow_states)

@@ -92,7 +92,11 @@ def _render_form_body() -> None:
             trade_type: str = st.selectbox(
                 "取引タイプ",
                 options=["buy", "sell", "transfer"],
-                format_func=lambda t: {"buy": "🟢 buy（購入）", "sell": "🔴 sell（売却）", "transfer": "⚪ transfer（振替）"}.get(t, t),
+                format_func=lambda t: {
+                    "buy": "🟢 buy（購入）",
+                    "sell": "🔴 sell（売却）",
+                    "transfer": "⚪ transfer（振替）",
+                }.get(t, t),
                 key="trade_form_type",
             )
 

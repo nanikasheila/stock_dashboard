@@ -12,24 +12,15 @@ from __future__ import annotations
 
 # Connection layer
 from src.data.graph.connection import (
-    _get_driver,
-    _get_mode,
     _MODE_TTL,
     _NEO4J_PASSWORD,
     _NEO4J_URI,
     _NEO4J_USER,
+    _get_driver,
+    _get_mode,
     close,
     get_mode,
     is_available,
-)
-
-# Schema layer
-from src.data.graph.schema import (
-    _SCHEMA_CONSTRAINTS,
-    _SCHEMA_INDEXES,
-    _VECTOR_INDEXES,
-    _set_embedding,
-    init_schema,
 )
 
 # Repository layer
@@ -55,6 +46,15 @@ from src.data.graph.repository import (
     merge_watchlist,
     sync_portfolio,
     tag_theme,
+)
+
+# Schema layer
+from src.data.graph.schema import (
+    _SCHEMA_CONSTRAINTS,
+    _SCHEMA_INDEXES,
+    _VECTOR_INDEXES,
+    _set_embedding,
+    init_schema,
 )
 
 __all__ = [

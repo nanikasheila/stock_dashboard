@@ -12,15 +12,15 @@ Alert levels:
 
 import numpy as np
 import pandas as pd
-from typing import Optional
 
-from src.core.common import is_cash as _is_cash, is_etf as _is_etf
-from src.core.value_trap import _finite_or_none
+from src.core.common import is_cash as _is_cash
+from src.core.common import is_etf as _is_etf
 from src.core.screening.indicators import (
+    assess_return_stability,
     calculate_shareholder_return,
     calculate_shareholder_return_history,
-    assess_return_stability,
 )
+from src.core.value_trap import _finite_or_none
 
 # Alert level constants
 ALERT_NONE = "none"
@@ -34,7 +34,7 @@ RSI_PREV_THRESHOLD = 50  # Previous RSI level for drop detection
 RSI_DROP_THRESHOLD = 40  # Current RSI level indicating a drop
 
 
-def check_trend_health(hist: Optional[pd.DataFrame]) -> dict:
+def check_trend_health(hist: pd.DataFrame | None) -> dict:
     """Analyze trend health from price history.
 
     Parameters
@@ -117,11 +117,7 @@ def check_trend_health(hist: Optional[pd.DataFrame]) -> dict:
             break
 
     # SMA50 approaching SMA200 (gap < 2%)
-    sma_gap = (
-        abs(current_sma50 - current_sma200) / current_sma200
-        if current_sma200 > 0
-        else 0
-    )
+    sma_gap = abs(current_sma50 - current_sma200) / current_sma200 if current_sma200 > 0 else 0
     sma50_approaching = sma_gap < SMA_APPROACHING_GAP
 
     # RSI drop: was > 50 five days ago and now < 40
@@ -310,9 +306,7 @@ def check_long_term_suitability(
     # Prefer total return rate (dividend + buyback) if available
     total_return_rate = None
     if shareholder_return_data is not None:
-        total_return_rate = _finite_or_none(
-            shareholder_return_data.get("total_return_rate")
-        )
+        total_return_rate = _finite_or_none(shareholder_return_data.get("total_return_rate"))
     return_metric = total_return_rate if total_return_rate is not None else dividend_yield
     _used_total_return = total_return_rate is not None
 
@@ -346,9 +340,12 @@ def check_long_term_suitability(
     total_score = roe_score + eps_score + div_score + per_score
 
     # --- Label determination ---
-    if (roe_status == "high" and eps_growth_status == "growing"
-            and dividend_status == "high"
-            and per_risk not in ("overvalued", "unknown")):
+    if (
+        roe_status == "high"
+        and eps_growth_status == "growing"
+        and dividend_status == "high"
+        and per_risk not in ("overvalued", "unknown")
+    ):
         label = "長期向き"
     elif per_risk == "overvalued" or roe_status == "low":
         label = "短期向き"
@@ -388,7 +385,7 @@ def check_long_term_suitability(
 
 
 # Value trap detection extracted to src/core/value_trap.py (KIK-392)
-from src.core.value_trap import detect_value_trap as _detect_value_trap  # noqa: F401
+from src.core.value_trap import detect_value_trap as _detect_value_trap
 
 
 def compute_alert_level(
@@ -484,10 +481,7 @@ def compute_alert_level(
     if cross_signal == "golden_cross" and days_since_cross is not None and days_since_cross <= 20:
         if level == ALERT_NONE:
             level = ALERT_EARLY_WARNING
-        reasons.append(
-            f"ゴールデンクロス発生（{days_since_cross}日前、{cross_date}）"
-            "- 上昇トレンド転換の可能性"
-        )
+        reasons.append(f"ゴールデンクロス発生（{days_since_cross}日前、{cross_date}）- 上昇トレンド転換の可能性")
 
     # Value trap detection (KIK-381)
     value_trap = _detect_value_trap(stock_detail)
@@ -595,14 +589,16 @@ def run_health_check(csv_path: str, client) -> dict:
 
         # 4. Alert level
         alert = compute_alert_level(
-            trend_health, change_quality,
+            trend_health,
+            change_quality,
             stock_detail=stock_detail,
             return_stability=sh_stability,
         )
 
         # 5. Long-term suitability (KIK-371, enhanced KIK-403)
         long_term = check_long_term_suitability(
-            stock_detail, shareholder_return_data=sh_return,
+            stock_detail,
+            shareholder_return_data=sh_return,
         )
 
         # 6. Value trap detection (KIK-381)

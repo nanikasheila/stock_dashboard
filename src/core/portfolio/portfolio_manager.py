@@ -9,16 +9,18 @@ import csv
 import logging
 import os
 from datetime import datetime
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
 from src.core.common import is_cash as _is_cash
 from src.core.ticker_utils import (
-    SUFFIX_TO_REGION as _SUFFIX_TO_COUNTRY,
-    SUFFIX_TO_CURRENCY as _SUFFIX_TO_CURRENCY,
     cash_currency as _cash_currency,
+)
+from src.core.ticker_utils import (
     infer_country as _infer_country,
+)
+from src.core.ticker_utils import (
     infer_currency as _infer_currency,
 )
 
@@ -86,7 +88,7 @@ class FxRateProvider(Protocol):
         ...
 
 
-def _fx_symbol_for_currency(currency: str) -> Optional[str]:
+def _fx_symbol_for_currency(currency: str) -> str | None:
     """Return the yfinance FX pair symbol for converting currency to JPY."""
     if currency == "JPY":
         return None  # No conversion needed
@@ -113,7 +115,7 @@ def load_portfolio(csv_path: str = DEFAULT_CSV_PATH) -> list[dict]:
         return []
 
     portfolio: list[dict] = []
-    with open(csv_path, "r", encoding="utf-8", newline="") as f:
+    with open(csv_path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             position = {
@@ -130,9 +132,7 @@ def load_portfolio(csv_path: str = DEFAULT_CSV_PATH) -> list[dict]:
     return portfolio
 
 
-def save_portfolio(
-    portfolio: list[dict], csv_path: str = DEFAULT_CSV_PATH
-) -> None:
+def save_portfolio(portfolio: list[dict], csv_path: str = DEFAULT_CSV_PATH) -> None:
     """ポートフォリオをCSVに保存。
 
     ディレクトリが存在しない場合は自動作成する。
@@ -167,7 +167,7 @@ def add_position(
     shares: int,
     cost_price: float,
     cost_currency: str = "JPY",
-    purchase_date: Optional[str] = None,
+    purchase_date: str | None = None,
     memo: str = "",
 ) -> dict:
     """新規ポジション追加 or 既存ポジションへの追加購入。
@@ -258,10 +258,7 @@ def sell_position(
     target = portfolio[target_idx]
 
     if shares > target["shares"]:
-        raise ValueError(
-            f"銘柄 {symbol} の保有数 ({target['shares']}) を超える "
-            f"売却数 ({shares}) が指定されました。"
-        )
+        raise ValueError(f"銘柄 {symbol} の保有数 ({target['shares']}) を超える 売却数 ({shares}) が指定されました。")
 
     remaining = target["shares"] - shares
 
@@ -380,9 +377,7 @@ def get_fx_rates(client: FxRateProvider) -> dict[str, float]:
     return rates
 
 
-def _get_fx_rate_for_currency(
-    currency: str, fx_rates: dict[str, float]
-) -> float:
+def _get_fx_rate_for_currency(currency: str, fx_rates: dict[str, float]) -> float:
     """指定通貨の対円レートを返す。見つからない場合は1.0（JPY扱い）。"""
     if currency in fx_rates:
         return fx_rates[currency]
@@ -477,24 +472,26 @@ def get_snapshot(csv_path: str, client: FxRateProvider) -> dict:
             cost_jpy = value_jpy  # cash has no P&L
             total_value_jpy += value_jpy
             total_cost_jpy += cost_jpy
-            positions.append({
-                "symbol": symbol,
-                "name": f"現金 ({cash_currency})",
-                "sector": "Cash",
-                "shares": shares,
-                "cost_price": cost_price,
-                "cost_currency": cost_currency,
-                "current_price": cost_price,
-                "market_currency": cash_currency,
-                "evaluation": cost_price * shares,
-                "evaluation_jpy": round(value_jpy, 0),
-                "cost_jpy": round(cost_jpy, 0),
-                "pnl": 0.0,
-                "pnl_pct": 0.0,
-                "pnl_jpy": 0.0,
-                "purchase_date": pos.get("purchase_date", ""),
-                "memo": pos.get("memo", ""),
-            })
+            positions.append(
+                {
+                    "symbol": symbol,
+                    "name": f"現金 ({cash_currency})",
+                    "sector": "Cash",
+                    "shares": shares,
+                    "cost_price": cost_price,
+                    "cost_currency": cost_currency,
+                    "current_price": cost_price,
+                    "market_currency": cash_currency,
+                    "evaluation": cost_price * shares,
+                    "evaluation_jpy": round(value_jpy, 0),
+                    "cost_jpy": round(cost_jpy, 0),
+                    "pnl": 0.0,
+                    "pnl_pct": 0.0,
+                    "pnl_jpy": 0.0,
+                    "purchase_date": pos.get("purchase_date", ""),
+                    "memo": pos.get("memo", ""),
+                }
+            )
             continue
 
         # Get current market data
@@ -525,9 +522,7 @@ def get_snapshot(csv_path: str, client: FxRateProvider) -> dict:
         # JPY conversion
         fx_rate = _get_fx_rate_for_currency(market_currency, fx_rates)
         evaluation_jpy = evaluation * fx_rate
-        cost_jpy = cost_price * shares * _get_fx_rate_for_currency(
-            cost_currency, fx_rates
-        )
+        cost_jpy = cost_price * shares * _get_fx_rate_for_currency(cost_currency, fx_rates)
         pnl_jpy = evaluation_jpy - cost_jpy
 
         total_value_jpy += evaluation_jpy
@@ -554,9 +549,7 @@ def get_snapshot(csv_path: str, client: FxRateProvider) -> dict:
         positions.append(position_detail)
 
     total_pnl_jpy = total_value_jpy - total_cost_jpy
-    total_pnl_pct = (
-        total_pnl_jpy / total_cost_jpy if total_cost_jpy != 0 else 0.0
-    )
+    total_pnl_pct = total_pnl_jpy / total_cost_jpy if total_cost_jpy != 0 else 0.0
 
     return {
         "positions": positions,
@@ -628,9 +621,7 @@ def get_structure_analysis(csv_path: str, client) -> dict:
         n = len(positions)
         weights = [1.0 / n] * n
     else:
-        weights = [
-            pos["evaluation_jpy"] / total_value for pos in positions
-        ]
+        weights = [pos["evaluation_jpy"] / total_value for pos in positions]
 
     # Build portfolio_data for analyze_concentration
     portfolio_data: list[dict] = []
@@ -701,11 +692,13 @@ def get_portfolio_shareholder_return(csv_path: str, client) -> dict:
         price = detail.get("price") or 0
         mv = price * h["shares"]
         if rate is not None and mv > 0:
-            position_returns.append({
-                "symbol": symbol,
-                "rate": rate,
-                "market_value": mv,
-            })
+            position_returns.append(
+                {
+                    "symbol": symbol,
+                    "rate": rate,
+                    "market_value": mv,
+                }
+            )
             weighted_rate += rate * mv
             total_mv += mv
 
@@ -716,9 +709,7 @@ def get_portfolio_shareholder_return(csv_path: str, client) -> dict:
     }
 
 
-def merge_positions(
-    current: list[dict], proposed: list[dict]
-) -> list[dict]:
+def merge_positions(current: list[dict], proposed: list[dict]) -> list[dict]:
     """現在PFに提案銘柄をマージ（加重平均コスト計算）。
 
     入力リストは変更しない（deep copy して操作）。
@@ -737,9 +728,7 @@ def merge_positions(
         マージ後のポートフォリオ。
     """
     merged = copy.deepcopy(current)
-    symbol_map: dict[str, int] = {
-        p["symbol"].upper(): i for i, p in enumerate(merged)
-    }
+    symbol_map: dict[str, int] = {p["symbol"].upper(): i for i, p in enumerate(merged)}
 
     for prop in proposed:
         key = prop["symbol"].upper()
@@ -747,20 +736,19 @@ def merge_positions(
             old = merged[symbol_map[key]]
             total = old["shares"] + prop["shares"]
             if total > 0:
-                old["cost_price"] = (
-                    old["shares"] * old["cost_price"]
-                    + prop["shares"] * prop["cost_price"]
-                ) / total
+                old["cost_price"] = (old["shares"] * old["cost_price"] + prop["shares"] * prop["cost_price"]) / total
             old["shares"] = total
         else:
-            merged.append({
-                "symbol": prop["symbol"],
-                "shares": prop["shares"],
-                "cost_price": prop["cost_price"],
-                "cost_currency": prop.get("cost_currency", "JPY"),
-                "purchase_date": "",
-                "memo": "(what-if)",
-            })
+            merged.append(
+                {
+                    "symbol": prop["symbol"],
+                    "shares": prop["shares"],
+                    "cost_price": prop["cost_price"],
+                    "cost_currency": prop.get("cost_currency", "JPY"),
+                    "purchase_date": "",
+                    "memo": "(what-if)",
+                }
+            )
             symbol_map[key] = len(merged) - 1
 
     return merged

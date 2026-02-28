@@ -5,8 +5,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # --- プロジェクトルートを sys.path に追加 ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -20,6 +18,7 @@ from components.trade_form import _handle_submit
 
 _TRADE_DATE = datetime.date(2026, 1, 15)
 from typing import Any
+
 _DEFAULT_ARGS: dict[str, Any] = dict(
     trade_type="buy",
     symbol_raw="VTI",
@@ -95,9 +94,7 @@ def test_handle_submit_buy_success_shows_success_and_clears_cache(
 
 @patch("streamlit.error")
 @patch("components.trade_form.record_trade")
-def test_handle_submit_empty_symbol_shows_error_and_skips_record_trade(
-    mock_record_trade, mock_st_error
-):
+def test_handle_submit_empty_symbol_shows_error_and_skips_record_trade(mock_record_trade, mock_st_error):
     # Arrange
     args = {**_DEFAULT_ARGS, "symbol_raw": "   "}
 
@@ -113,9 +110,7 @@ def test_handle_submit_empty_symbol_shows_error_and_skips_record_trade(
 
 @patch("streamlit.error")
 @patch("components.trade_form.record_trade")
-def test_handle_submit_blank_symbol_shows_error_and_skips_record_trade(
-    mock_record_trade, mock_st_error
-):
+def test_handle_submit_blank_symbol_shows_error_and_skips_record_trade(mock_record_trade, mock_st_error):
     # Arrange
     args = {**_DEFAULT_ARGS, "symbol_raw": ""}
 
@@ -135,9 +130,7 @@ def test_handle_submit_blank_symbol_shows_error_and_skips_record_trade(
 @patch("streamlit.rerun")
 @patch("streamlit.error")
 @patch("components.trade_form.record_trade")
-def test_handle_submit_record_trade_value_error_shows_error(
-    mock_record_trade, mock_st_error, mock_rerun
-):
+def test_handle_submit_record_trade_value_error_shows_error(mock_record_trade, mock_st_error, mock_rerun):
     # Arrange
     mock_record_trade.side_effect = ValueError("保有株数を超えています")
 
@@ -159,9 +152,7 @@ def test_handle_submit_record_trade_value_error_shows_error(
 @patch("streamlit.rerun")
 @patch("streamlit.error")
 @patch("components.trade_form.record_trade")
-def test_handle_submit_record_trade_runtime_error_shows_error(
-    mock_record_trade, mock_st_error, mock_rerun
-):
+def test_handle_submit_record_trade_runtime_error_shows_error(mock_record_trade, mock_st_error, mock_rerun):
     # Arrange
     mock_record_trade.side_effect = RuntimeError("ポートフォリオCSVの更新に失敗しました")
 
@@ -183,9 +174,7 @@ def test_handle_submit_record_trade_runtime_error_shows_error(
 @patch("streamlit.rerun")
 @patch("streamlit.error")
 @patch("components.trade_form.record_trade")
-def test_handle_submit_unexpected_error_shows_generic_error_message(
-    mock_record_trade, mock_st_error, mock_rerun
-):
+def test_handle_submit_unexpected_error_shows_generic_error_message(mock_record_trade, mock_st_error, mock_rerun):
     # Arrange
     mock_record_trade.side_effect = Exception("network timeout")
 
@@ -208,9 +197,7 @@ def test_handle_submit_unexpected_error_shows_generic_error_message(
 @patch("streamlit.cache_data")
 @patch("streamlit.success")
 @patch("components.trade_form.record_trade")
-def test_handle_submit_transfer_passes_price_zero(
-    mock_record_trade, mock_st_success, mock_cache_data, mock_rerun
-):
+def test_handle_submit_transfer_passes_price_zero(mock_record_trade, mock_st_success, mock_cache_data, mock_rerun):
     # Arrange: _render_form_body already forces unit_price=0.0 for transfer,
     # but _handle_submit receives unit_price as argument. Simulate the same.
     mock_record_trade.return_value = "振替を記録しました: CASH_JPY × 1株"

@@ -4,8 +4,6 @@ Provides HHI (Herfindahl-Hirschman Index) calculation and
 multi-axis concentration analysis for sector, region, and currency.
 """
 
-from typing import Optional
-
 
 def compute_hhi(weights: list[float]) -> float:
     """Compute the Herfindahl-Hirschman Index for a set of weights.
@@ -150,24 +148,16 @@ def analyze_concentration(
         }
     """
     # Sector HHI
-    sector_hhi, sector_breakdown = _compute_axis_hhi(
-        portfolio_data, weights, "sector", default_label="不明"
-    )
+    sector_hhi, sector_breakdown = _compute_axis_hhi(portfolio_data, weights, "sector", default_label="不明")
 
     # Region HHI -- try "country" first, fall back to "region"
-    region_hhi, region_breakdown = _compute_axis_hhi(
-        portfolio_data, weights, "country", default_label="不明"
-    )
+    region_hhi, region_breakdown = _compute_axis_hhi(portfolio_data, weights, "country", default_label="不明")
     # If all ended up "不明", try the "region" key instead
     if list(region_breakdown.keys()) == ["不明"]:
-        region_hhi, region_breakdown = _compute_axis_hhi(
-            portfolio_data, weights, "region", default_label="不明"
-        )
+        region_hhi, region_breakdown = _compute_axis_hhi(portfolio_data, weights, "region", default_label="不明")
 
     # Currency HHI
-    currency_hhi, currency_breakdown = _compute_axis_hhi(
-        portfolio_data, weights, "currency", default_label="不明"
-    )
+    currency_hhi, currency_breakdown = _compute_axis_hhi(portfolio_data, weights, "currency", default_label="不明")
 
     # Determine the axis with the highest HHI
     axes = {
