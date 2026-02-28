@@ -10,6 +10,7 @@ Usage
 
 from __future__ import annotations
 
+import html
 import sys
 import time
 from pathlib import Path
@@ -1764,7 +1765,7 @@ if econ_news:
 
                 # LLM分析の理由（あれば表示）
                 _reason_html = ""
-                _reason = _impact.get("reason", "")
+                _reason = html.escape(_impact.get("reason", ""))
                 if _reason and news_item.get("analysis_method") == "llm":
                     _reason_html = (
                         f'<div style="font-size:0.82rem; margin-top:4px; opacity:0.85;">'
@@ -1772,18 +1773,20 @@ if econ_news:
                     )
 
                 # タイトルリンク
-                _link = news_item.get("link", "")
+                # Why: ニュースタイトル・リンクは外部ソース由来のため XSS 防止
+                _link = html.escape(news_item.get("link", ""))
+                _safe_title = html.escape(news_item.get("title", ""))
                 _disp_no = news_item.get("_display_number", "")
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
                 _title_html = (
-                    f'<a href="{_link}" target="_blank">{news_item["title"]}</a>'
-                    if _link else news_item["title"]
+                    f'<a href="{_link}" target="_blank">{_safe_title}</a>'
+                    if _link else _safe_title
                 )
 
                 # 発行元・日時
-                _pub = news_item.get("publisher", "")
+                _pub = html.escape(news_item.get("publisher", ""))
                 _time = news_item.get("publish_time", "")
-                _source = news_item.get("source_name", "")
+                _source = html.escape(news_item.get("source_name", ""))
                 _meta_parts = [p for p in [_pub, _source, _time[:16] if _time else ""] if p]
                 _meta = " · ".join(_meta_parts)
                 _meta_html = f'<div class="news-meta">{_meta}</div>' if _meta else ""
@@ -1801,16 +1804,18 @@ if econ_news:
     if _other_news:
         with st.expander(f"📋 その他のニュース（{len(_other_news)}件）", expanded=False):
             for news_item in _other_news:
-                _link = news_item.get("link", "")
+                # Why: 外部ソース由来テキストの XSS 防止
+                _link = html.escape(news_item.get("link", ""))
+                _safe_title = html.escape(news_item.get("title", ""))
                 _disp_no = news_item.get("_display_number", "")
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
                 _title_html = (
-                    f'<a href="{_link}" target="_blank">{news_item["title"]}</a>'
-                    if _link else news_item["title"]
+                    f'<a href="{_link}" target="_blank">{_safe_title}</a>'
+                    if _link else _safe_title
                 )
-                _pub = news_item.get("publisher", "")
+                _pub = html.escape(news_item.get("publisher", ""))
                 _time = news_item.get("publish_time", "")
-                _source = news_item.get("source_name", "")
+                _source = html.escape(news_item.get("source_name", ""))
                 _meta_parts = [p for p in [_pub, _source, _time[:16] if _time else ""] if p]
                 _meta = " · ".join(_meta_parts)
 
