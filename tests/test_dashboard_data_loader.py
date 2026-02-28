@@ -872,6 +872,77 @@ class TestTopWorstPerformers:
         assert len(result["top"]) == 2
         assert len(result["worst"]) == 2
 
+    def test_shares_normalisation_buy(self):
+        """株追加購入時、評価額ジャンプではなく純粋な株価騰落率が算出される."""
+        dates = pd.date_range("2026-02-26", periods=2, freq="B")
+        # Day0: 500 shares × ¥3,500 = 1,750,000
+        # Day1: 700 shares × ¥3,535 = 2,474,500 (bought 200 more, +1% price)
+        df = pd.DataFrame({
+            "FUJITSU(6702.T)": [1_750_000, 2_474_500],
+            "total": [1_750_000, 2_474_500],
+        }, index=dates)
+        shares_df = pd.DataFrame({
+            "FUJITSU(6702.T)": [500, 700],
+        }, index=dates)
+        df.attrs["_shares_df"] = shares_df
+
+        result = compute_top_worst_performers(df, top_n=3)
+        top = result["top"]
+        assert len(top) == 1
+        # (2474500/700) / (1750000/500) = 3535 / 3500 = +1.0%
+        assert top[0]["change_pct"] == pytest.approx(1.0, abs=0.01)
+
+    def test_shares_normalisation_sell(self):
+        """株一部売却時、評価額減少ではなく純粋な株価騰落率が算出される."""
+        dates = pd.date_range("2026-02-26", periods=2, freq="B")
+        # Day0: 100 shares × $250 × 150 = 3,750,000
+        # Day1:  70 shares × $252.5 × 150 = 2,651,250 (sold 30, +1% price)
+        df = pd.DataFrame({
+            "Vanguard(VTI)": [3_750_000, 2_651_250],
+            "total": [3_750_000, 2_651_250],
+        }, index=dates)
+        shares_df = pd.DataFrame({
+            "Vanguard(VTI)": [100, 70],
+        }, index=dates)
+        df.attrs["_shares_df"] = shares_df
+
+        result = compute_top_worst_performers(df, top_n=3)
+        top = result["top"]
+        assert len(top) == 1
+        # (2651250/70) / (3750000/100) = 37875 / 37500 = +1.0%
+        assert top[0]["change_pct"] == pytest.approx(1.0, abs=0.01)
+
+    def test_no_shares_df_falls_back(self):
+        """_shares_df がない場合は従来の評価額ベース計算にフォールバックする."""
+        dates = pd.date_range("2026-02-26", periods=2, freq="B")
+        df = pd.DataFrame({
+            "AAA": [100, 110],
+            "total": [100, 110],
+        }, index=dates)
+        # attrs に _shares_df を設定しない
+        result = compute_top_worst_performers(df, top_n=3)
+        assert result["top"][0]["change_pct"] == pytest.approx(10.0, abs=0.01)
+
+    def test_shares_unchanged_matches_eval_pct(self):
+        """株数が変わらない場合、正規化しても従来計算と一致する."""
+        dates = pd.date_range("2026-02-26", periods=2, freq="B")
+        df = pd.DataFrame({
+            "AAA": [1000, 1050],
+            "BBB": [2000, 1900],
+            "total": [3000, 2950],
+        }, index=dates)
+        shares_df = pd.DataFrame({
+            "AAA": [10, 10],
+            "BBB": [20, 20],
+        }, index=dates)
+        df.attrs["_shares_df"] = shares_df
+
+        result = compute_top_worst_performers(df, top_n=2)
+        assert result["top"][0]["symbol"] == "AAA"
+        assert result["top"][0]["change_pct"] == pytest.approx(5.0, abs=0.01)
+        assert result["worst"][0]["symbol"] == "BBB"
+        assert result["worst"][0]["change_pct"] == pytest.approx(-5.0, abs=0.01)
+
 
 # ---------------------------------------------------------------------------
 # Phase 3: compute_drawdown_series / compute_rolling_sharpe
