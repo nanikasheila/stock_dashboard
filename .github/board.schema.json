@@ -1,0 +1,220 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Board",
+  "description": "機能ライフサイクルを追跡する Board のスキーマ定義。エージェント間の構造化された共有コンテキスト。",
+  "type": "object",
+  "required": ["schema_version", "feature_id", "maturity", "cycle", "flow_state", "gate_profile", "gates", "artifacts", "history", "created_at", "updated_at"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema ファイルへの参照。省略推奨。記載する場合はリポジトリルートからの相対パスで指定する（例: ../../.github/board.schema.json）。worktree の深さに依存する絶対的な相対パスは避ける"
+    },
+    "schema_version": {
+      "type": "integer",
+      "description": "Board スキーマのバージョン。スキーマ変更時にインクリメントする",
+      "minimum": 1,
+      "default": 1
+    },
+    "feature_id": {
+      "type": "string",
+      "description": "機能の一意識別子。ブランチ命名規則と対応する（例: feature-auth, fix-login-error）",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+    },
+
+    "maturity": {
+      "type": "string",
+      "description": "機能の成熟度。プロジェクト内での位置づけを示す",
+      "enum": ["experimental", "development", "stable", "release-ready", "sandbox", "abandoned"]
+    },
+    "maturity_history": {
+      "type": "array",
+      "description": "Maturity State の遷移履歴",
+      "items": { "$ref": "#/definitions/maturity_transition" }
+    },
+
+    "cycle": {
+      "type": "integer",
+      "description": "現在の開発サイクル番号。セッション跨ぎの再開時にインクリメントする",
+      "minimum": 1,
+      "default": 1
+    },
+    "flow_state": {
+      "type": "string",
+      "description": "現在の開発サイクル内での位置。オーケストレーターのみが書き込み可能",
+      "enum": [
+        "initialized",
+        "analyzing",
+        "designing",
+        "planned",
+        "implementing",
+        "testing",
+        "reviewing",
+        "approved",
+        "documenting",
+        "submitting",
+        "completed"
+      ]
+    },
+
+    "gate_profile": {
+      "type": "string",
+      "description": "適用する Gate Profile 名。通常は maturity に連動するが、手動オーバーライド可能",
+      "enum": ["experimental", "development", "stable", "release-ready", "sandbox"]
+    },
+    "gates": {
+      "type": "object",
+      "description": "各 Gate の現在の状態。オーケストレーターのみが書き込み可能",
+      "properties": {
+        "analysis":      { "$ref": "#/definitions/gate_status" },
+        "design":        { "$ref": "#/definitions/gate_status" },
+        "plan":          { "$ref": "#/definitions/gate_status" },
+        "implementation": { "$ref": "#/definitions/gate_status" },
+        "test":          { "$ref": "#/definitions/gate_status" },
+        "review":        { "$ref": "#/definitions/gate_status" },
+        "documentation": { "$ref": "#/definitions/gate_status" },
+        "submit":        { "$ref": "#/definitions/gate_status" }
+      },
+      "additionalProperties": false
+    },
+
+    "artifacts": {
+      "type": "object",
+      "description": "各エージェントの成果物。各エージェントは自セクションのみに書き込む。詳細スキーマは board-artifacts.schema.json を参照",
+      "properties": {
+        "impact_analysis": {
+          "description": "manager の影響分析結果",
+          "oneOf": [{ "$ref": "board-artifacts.schema.json#/definitions/artifact_impact_analysis" }, { "type": "null" }]
+        },
+        "architecture_decision": {
+          "description": "architect の構造評価・配置判断",
+          "oneOf": [{ "$ref": "board-artifacts.schema.json#/definitions/artifact_architecture_decision" }, { "type": "null" }]
+        },
+        "execution_plan": {
+          "description": "manager の実行計画",
+          "oneOf": [{ "$ref": "board-artifacts.schema.json#/definitions/artifact_execution_plan" }, { "type": "null" }]
+        },
+        "implementation": {
+          "description": "developer の実装結果",
+          "oneOf": [{ "$ref": "board-artifacts.schema.json#/definitions/artifact_implementation" }, { "type": "null" }]
+        },
+        "test_results": {
+          "description": "developer のテスト結果",
+          "oneOf": [{ "$ref": "board-artifacts.schema.json#/definitions/artifact_test_results" }, { "type": "null" }]
+        },
+        "review_findings": {
+          "type": "array",
+          "description": "reviewer のレビュー結果（試行ごとに追記）",
+          "items": { "$ref": "board-artifacts.schema.json#/definitions/artifact_review_finding" }
+        },
+        "documentation": {
+          "description": "writer のドキュメント更新結果",
+          "oneOf": [{ "$ref": "board-artifacts.schema.json#/definitions/artifact_documentation" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "history": {
+      "type": "array",
+      "description": "全操作の時系列ログ。サイクルを跨いで蓄積される",
+      "items": { "$ref": "#/definitions/history_entry" }
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Board 作成日時（ISO 8601）"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Board 最終更新日時（ISO 8601）"
+    }
+  },
+  "additionalProperties": false,
+
+  "definitions": {
+    "gate_status": {
+      "type": "object",
+      "description": "個別 Gate の状態",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["not_reached", "pending", "passed", "failed", "skipped", "blocked"],
+          "description": "Gate の現在状態"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "この Gate が現在の gate_profile で必須かどうか"
+        },
+        "evaluated_by": {
+          "type": "string",
+          "description": "Gate を評価したエージェント名"
+        },
+        "results": {
+          "type": "object",
+          "description": "Gate 固有の評価結果（Gate の種類により構造が異なる）",
+          "additionalProperties": true
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "maturity_transition": {
+      "type": "object",
+      "required": ["from", "to", "timestamp", "reason"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "enum": ["experimental", "development", "stable", "release-ready", "sandbox", "abandoned"]
+        },
+        "to": {
+          "type": "string",
+          "enum": ["experimental", "development", "stable", "release-ready", "sandbox", "abandoned"]
+        },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "reason": { "type": "string", "description": "昇格・降格・廃棄の理由" },
+        "cycle": { "type": "integer", "description": "遷移が発生したサイクル番号" }
+      },
+      "additionalProperties": false
+    },
+
+    "history_entry": {
+      "required": ["timestamp", "cycle", "action"],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "cycle": { "type": "integer", "description": "操作が発生したサイクル番号" },
+        "agent": {
+          "type": "string",
+          "description": "操作を行ったエージェント（orchestrator を含む）"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "board_created",
+            "cycle_started",
+            "flow_state_changed",
+            "gate_evaluated",
+            "artifact_updated",
+            "maturity_changed",
+            "board_archived",
+            "board_destroyed"
+          ],
+          "description": "操作の種類"
+        },
+        "details": {
+          "type": "object",
+          "description": "操作の詳細（action ごとに構造が異なる）",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
