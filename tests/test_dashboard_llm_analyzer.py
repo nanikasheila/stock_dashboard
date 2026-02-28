@@ -5,12 +5,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # Ensure dashboard components are importable
-_SCRIPTS_DIR = str(
-    Path(__file__).resolve().parents[1]
-)
+_SCRIPTS_DIR = str(Path(__file__).resolve().parents[1])
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
@@ -21,36 +17,36 @@ from components.llm_analyzer import (
     _build_analysis_prompt,
     _build_health_summary_prompt,
     _build_portfolio_summary,
-    _compute_health_hash,
-    _compute_news_hash,
-    _parse_response,
-    _parse_summary_response,
-    _parse_health_summary_response,
-    analyze_news_batch,
-    clear_cache,
-    clear_summary_cache,
-    clear_health_summary_cache,
-    generate_news_summary,
-    generate_health_summary,
-    get_cache_info,
-    get_summary_cache_info,
-    get_health_summary_cache_info,
-    is_available,
     # Unified analysis (KIK: 3→1 LLM session)
     _build_unified_prompt,
+    _compute_health_hash,
+    _compute_news_hash,
     _compute_unified_hash,
     _extract_json_text,
+    _parse_health_summary_response,
+    _parse_response,
+    _parse_summary_response,
     _parse_unified_response,
+    analyze_news_batch,
     apply_news_analysis,
+    clear_cache,
+    clear_health_summary_cache,
+    clear_summary_cache,
     clear_unified_cache,
+    generate_health_summary,
+    generate_news_summary,
+    get_cache_info,
+    get_health_summary_cache_info,
+    get_summary_cache_info,
     get_unified_cache_info,
+    is_available,
     run_unified_analysis,
 )
-
 
 # ---------------------------------------------------------------------------
 # is_available tests (delegated to copilot_client)
 # ---------------------------------------------------------------------------
+
 
 class TestIsAvailable:
     def test_available_when_copilot_found_by_which(self):
@@ -59,20 +55,25 @@ class TestIsAvailable:
 
     def test_available_when_copilot_found_by_subprocess(self):
         """shutil.which が見つけられなくても subprocess で検出できる."""
-        with patch("components.copilot_client.shutil.which", return_value=None), \
-             patch("components.copilot_client.subprocess.run") as mock_run:
+        with (
+            patch("components.copilot_client.shutil.which", return_value=None),
+            patch("components.copilot_client.subprocess.run") as mock_run,
+        ):
             mock_run.return_value = MagicMock(returncode=0)
             assert is_available() is True
 
     def test_unavailable_when_copilot_not_found(self):
-        with patch("components.copilot_client.shutil.which", return_value=None), \
-             patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError):
+        with (
+            patch("components.copilot_client.shutil.which", return_value=None),
+            patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError),
+        ):
             assert is_available() is False
 
 
 # ---------------------------------------------------------------------------
 # _build_portfolio_summary tests
 # ---------------------------------------------------------------------------
+
 
 class TestBuildPortfolioSummary:
     def test_basic_summary(self):
@@ -103,6 +104,7 @@ class TestBuildPortfolioSummary:
 # _build_analysis_prompt tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildAnalysisPrompt:
     def test_includes_news_and_portfolio(self):
         news_list = [{"id": 0, "title": "Fed raises rates", "publisher": "Reuters", "source": "S&P 500"}]
@@ -123,12 +125,20 @@ class TestBuildAnalysisPrompt:
 # _parse_response tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseResponse:
     def test_plain_json_array(self):
-        raw = json.dumps([
-            {"id": 0, "categories": ["金利"], "impact_level": "medium",
-             "affected_holdings": ["7203.T"], "reason": "テスト理由"},
-        ])
+        raw = json.dumps(
+            [
+                {
+                    "id": 0,
+                    "categories": ["金利"],
+                    "impact_level": "medium",
+                    "affected_holdings": ["7203.T"],
+                    "reason": "テスト理由",
+                },
+            ]
+        )
         result = _parse_response(raw, 1)
         assert result is not None
         assert len(result) == 1
@@ -150,10 +160,17 @@ class TestParseResponse:
         assert len(result) == 1
 
     def test_category_string_to_dict_conversion(self):
-        raw = json.dumps([
-            {"id": 0, "categories": ["金利", "為替"],
-             "impact_level": "high", "affected_holdings": [], "reason": ""},
-        ])
+        raw = json.dumps(
+            [
+                {
+                    "id": 0,
+                    "categories": ["金利", "為替"],
+                    "impact_level": "high",
+                    "affected_holdings": [],
+                    "reason": "",
+                },
+            ]
+        )
         result = _parse_response(raw, 1)
         assert result is not None
         cats = result[0]["categories"]
@@ -164,11 +181,17 @@ class TestParseResponse:
 
     def test_category_dict_format(self):
         """LLM may return categories as dicts directly."""
-        raw = json.dumps([
-            {"id": 0,
-             "categories": [{"category": "テクノロジー", "icon": "💻", "label": "テク"}],
-             "impact_level": "low", "affected_holdings": [], "reason": ""},
-        ])
+        raw = json.dumps(
+            [
+                {
+                    "id": 0,
+                    "categories": [{"category": "テクノロジー", "icon": "💻", "label": "テク"}],
+                    "impact_level": "low",
+                    "affected_holdings": [],
+                    "reason": "",
+                },
+            ]
+        )
         result = _parse_response(raw, 1)
         assert result is not None
         cats = result[0]["categories"]
@@ -179,10 +202,17 @@ class TestParseResponse:
         assert cats[0]["label"] == "テクノロジー"
 
     def test_unknown_category_filtered(self):
-        raw = json.dumps([
-            {"id": 0, "categories": ["不明カテゴリ", "金利"],
-             "impact_level": "low", "affected_holdings": [], "reason": ""},
-        ])
+        raw = json.dumps(
+            [
+                {
+                    "id": 0,
+                    "categories": ["不明カテゴリ", "金利"],
+                    "impact_level": "low",
+                    "affected_holdings": [],
+                    "reason": "",
+                },
+            ]
+        )
         result = _parse_response(raw, 1)
         assert result is not None
         cats = result[0]["categories"]
@@ -206,21 +236,34 @@ class TestParseResponse:
 
     def test_invalid_impact_level_preserved(self):
         """Unknown impact_level is kept as-is in _parse_response (validation happens downstream)."""
-        raw = json.dumps([
-            {"id": 0, "categories": [], "impact_level": "unknown",
-             "affected_holdings": [], "reason": ""},
-        ])
+        raw = json.dumps(
+            [
+                {"id": 0, "categories": [], "impact_level": "unknown", "affected_holdings": [], "reason": ""},
+            ]
+        )
         result = _parse_response(raw, 1)
         assert result is not None
         assert result[0]["impact_level"] == "unknown"
 
     def test_multiple_items(self):
-        raw = json.dumps([
-            {"id": 0, "categories": ["金利"], "impact_level": "high",
-             "affected_holdings": ["8306.T"], "reason": "金融セクター影響"},
-            {"id": 1, "categories": ["テクノロジー"], "impact_level": "medium",
-             "affected_holdings": ["AAPL"], "reason": "テック関連"},
-        ])
+        raw = json.dumps(
+            [
+                {
+                    "id": 0,
+                    "categories": ["金利"],
+                    "impact_level": "high",
+                    "affected_holdings": ["8306.T"],
+                    "reason": "金融セクター影響",
+                },
+                {
+                    "id": 1,
+                    "categories": ["テクノロジー"],
+                    "impact_level": "medium",
+                    "affected_holdings": ["AAPL"],
+                    "reason": "テック関連",
+                },
+            ]
+        )
         result = _parse_response(raw, 2)
         assert result is not None
         assert len(result) == 2
@@ -232,10 +275,13 @@ class TestParseResponse:
 # analyze_news_batch tests
 # ---------------------------------------------------------------------------
 
+
 class TestAnalyzeNewsBatch:
     def test_returns_none_when_copilot_not_found(self):
-        with patch("components.copilot_client.shutil.which", return_value=None), \
-             patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError):
+        with (
+            patch("components.copilot_client.shutil.which", return_value=None),
+            patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError),
+        ):
             result = analyze_news_batch(
                 [{"title": "test", "publisher": "AP", "source_name": "test"}],
                 [],
@@ -250,10 +296,17 @@ class TestAnalyzeNewsBatch:
     @patch("components.copilot_client.subprocess.run")
     @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
     def test_successful_cli_call(self, _mock_which, mock_run):
-        llm_response = json.dumps([
-            {"id": 0, "categories": ["金利"], "impact_level": "high",
-             "affected_holdings": ["8306.T"], "reason": "利上げで金融セクター影響"},
-        ])
+        llm_response = json.dumps(
+            [
+                {
+                    "id": 0,
+                    "categories": ["金利"],
+                    "impact_level": "high",
+                    "affected_holdings": ["8306.T"],
+                    "reason": "利上げで金融セクター影響",
+                },
+            ]
+        )
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout=llm_response,
@@ -273,6 +326,7 @@ class TestAnalyzeNewsBatch:
     @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
     def test_cli_timeout_returns_none(self, _mock_which, mock_run):
         import subprocess
+
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="copilot", timeout=60)
 
         result = analyze_news_batch(
@@ -330,6 +384,7 @@ class TestAnalyzeNewsBatch:
 # AVAILABLE_MODELS sanity check
 # ---------------------------------------------------------------------------
 
+
 class TestAvailableModels:
     def test_has_entries(self):
         assert len(AVAILABLE_MODELS) >= 10
@@ -355,9 +410,14 @@ class TestAvailableModels:
     def test_premium_models_labeled(self):
         """Premium models should have ⚡Premium in their label."""
         premium_ids = {
-            "gpt-5.1-codex", "gpt-5.1-codex-mini", "gpt-5.1-codex-max",
-            "gpt-5.2-codex", "gpt-5.3-codex",
-            "claude-opus-4.5", "claude-opus-4.6", "claude-opus-4.6-fast",
+            "gpt-5.1-codex",
+            "gpt-5.1-codex-mini",
+            "gpt-5.1-codex-max",
+            "gpt-5.2-codex",
+            "gpt-5.3-codex",
+            "claude-opus-4.5",
+            "claude-opus-4.6",
+            "claude-opus-4.6-fast",
         }
         for mid, label in AVAILABLE_MODELS:
             if mid in premium_ids:
@@ -367,6 +427,7 @@ class TestAvailableModels:
 # ---------------------------------------------------------------------------
 # Cache tests
 # ---------------------------------------------------------------------------
+
 
 class TestCacheMechanism:
     def setup_method(self):
@@ -397,12 +458,21 @@ class TestCacheMechanism:
     @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
     def test_cache_hit_skips_cli_call(self, _mock_which, mock_run):
         """Second call with same news should not invoke CLI."""
-        llm_response = json.dumps([
-            {"id": 0, "categories": ["金利"], "impact_level": "high",
-             "affected_holdings": ["8306.T"], "reason": "利上げ"},
-        ])
+        llm_response = json.dumps(
+            [
+                {
+                    "id": 0,
+                    "categories": ["金利"],
+                    "impact_level": "high",
+                    "affected_holdings": ["8306.T"],
+                    "reason": "利上げ",
+                },
+            ]
+        )
         mock_run.return_value = MagicMock(
-            returncode=0, stdout=llm_response, stderr="",
+            returncode=0,
+            stdout=llm_response,
+            stderr="",
         )
 
         news = [{"title": "Fed raises rates", "publisher": "R", "source_name": "SP"}]
@@ -425,8 +495,9 @@ class TestCacheMechanism:
         """Different news titles should trigger new CLI call."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout=json.dumps([{"id": 0, "categories": [], "impact_level": "none",
-                                "affected_holdings": [], "reason": ""}]),
+            stdout=json.dumps(
+                [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
+            ),
             stderr="",
         )
 
@@ -445,8 +516,9 @@ class TestCacheMechanism:
         """Changing model should invalidate cache."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout=json.dumps([{"id": 0, "categories": [], "impact_level": "none",
-                                "affected_holdings": [], "reason": ""}]),
+            stdout=json.dumps(
+                [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
+            ),
             stderr="",
         )
 
@@ -463,8 +535,9 @@ class TestCacheMechanism:
         """cache_ttl=0 should always call CLI."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout=json.dumps([{"id": 0, "categories": [], "impact_level": "none",
-                                "affected_holdings": [], "reason": ""}]),
+            stdout=json.dumps(
+                [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
+            ),
             stderr="",
         )
 
@@ -475,6 +548,7 @@ class TestCacheMechanism:
 
     def test_clear_cache(self):
         from components.llm_analyzer import _analysis_cache
+
         _analysis_cache["hash"] = "abc"
         _analysis_cache["results"] = [{}]
         _analysis_cache["timestamp"] = 12345.0
@@ -489,8 +563,9 @@ class TestCacheMechanism:
     def test_cache_info_after_analysis(self, _mock_which, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout=json.dumps([{"id": 0, "categories": [], "impact_level": "none",
-                                "affected_holdings": [], "reason": ""}]),
+            stdout=json.dumps(
+                [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
+            ),
             stderr="",
         )
         news = [{"title": "Test", "publisher": "R", "source_name": "SP"}]
@@ -506,6 +581,7 @@ class TestCacheMechanism:
 # Cache TTL options
 # ---------------------------------------------------------------------------
 
+
 class TestCacheTTLOptions:
     def test_has_options(self):
         assert len(CACHE_TTL_OPTIONS) >= 3
@@ -514,8 +590,8 @@ class TestCacheTTLOptions:
         for opt in CACHE_TTL_OPTIONS:
             assert isinstance(opt, tuple)
             assert len(opt) == 2
-            assert isinstance(opt[0], str)   # label
-            assert isinstance(opt[1], int)   # seconds
+            assert isinstance(opt[0], str)  # label
+            assert isinstance(opt[1], int)  # seconds
 
     def test_default_ttl_matches_first_option(self):
         assert DEFAULT_CACHE_TTL_SEC == CACHE_TTL_OPTIONS[0][1]
@@ -525,21 +601,24 @@ class TestCacheTTLOptions:
 # _parse_summary_response tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseSummaryResponse:
     """Test _parse_summary_response parsing logic."""
 
     def test_valid_json(self):
-        raw = json.dumps({
-            "overview": "今日はリスクオフムード",
-            "key_points": [
-                {
-                    "category": "金利",
-                    "summary": "FRBの利上げ示唆",
-                    "news_ids": [0, 2],
-                },
-            ],
-            "portfolio_alert": "金利上昇で債券ポジションに注意",
-        })
+        raw = json.dumps(
+            {
+                "overview": "今日はリスクオフムード",
+                "key_points": [
+                    {
+                        "category": "金利",
+                        "summary": "FRBの利上げ示唆",
+                        "news_ids": [0, 2],
+                    },
+                ],
+                "portfolio_alert": "金利上昇で債券ポジションに注意",
+            }
+        )
         result = _parse_summary_response(raw)
         assert result is not None
         assert result["overview"] == "今日はリスクオフムード"
@@ -570,39 +649,49 @@ class TestParseSummaryResponse:
         assert result is None
 
     def test_unknown_category_gets_default_icon(self):
-        raw = json.dumps({
-            "overview": "",
-            "key_points": [
-                {"category": "不動産", "summary": "test", "news_ids": [0]},
-            ],
-            "portfolio_alert": "",
-        })
+        raw = json.dumps(
+            {
+                "overview": "",
+                "key_points": [
+                    {"category": "不動産", "summary": "test", "news_ids": [0]},
+                ],
+                "portfolio_alert": "",
+            }
+        )
         result = _parse_summary_response(raw)
         assert result is not None
         assert result["key_points"][0]["icon"] == "📌"
 
     def test_known_categories_get_correct_icons(self):
         categories_icons = {
-            "金利": "🏦", "為替": "💱", "地政学": "🌍",
-            "景気": "📊", "テクノロジー": "💻", "エネルギー": "⛽",
+            "金利": "🏦",
+            "為替": "💱",
+            "地政学": "🌍",
+            "景気": "📊",
+            "テクノロジー": "💻",
+            "エネルギー": "⛽",
         }
         for cat_name, expected_icon in categories_icons.items():
-            raw = json.dumps({
-                "overview": "",
-                "key_points": [
-                    {"category": cat_name, "summary": "t", "news_ids": []},
-                ],
-                "portfolio_alert": "",
-            })
+            raw = json.dumps(
+                {
+                    "overview": "",
+                    "key_points": [
+                        {"category": cat_name, "summary": "t", "news_ids": []},
+                    ],
+                    "portfolio_alert": "",
+                }
+            )
             result = _parse_summary_response(raw)
             assert result["key_points"][0]["icon"] == expected_icon
 
     def test_empty_key_points(self):
-        raw = json.dumps({
-            "overview": "概要のみ",
-            "key_points": [],
-            "portfolio_alert": "",
-        })
+        raw = json.dumps(
+            {
+                "overview": "概要のみ",
+                "key_points": [],
+                "portfolio_alert": "",
+            }
+        )
         result = _parse_summary_response(raw)
         assert result is not None
         assert result["key_points"] == []
@@ -611,6 +700,7 @@ class TestParseSummaryResponse:
 # ---------------------------------------------------------------------------
 # generate_news_summary tests
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateNewsSummary:
     """Test generate_news_summary function."""
@@ -636,24 +726,28 @@ class TestGenerateNewsSummary:
         ]
 
     def test_returns_none_when_not_available(self):
-        with patch("components.copilot_client.shutil.which", return_value=None), \
-             patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError):
+        with (
+            patch("components.copilot_client.shutil.which", return_value=None),
+            patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError),
+        ):
             result = generate_news_summary(self._make_news(), [])
             assert result is None
 
     def test_success(self):
-        summary_response = json.dumps({
-            "overview": "全体概要テスト",
-            "key_points": [
-                {"category": "景気", "summary": "景気関連", "news_ids": [0, 1]},
-            ],
-            "portfolio_alert": "注意点テスト",
-        })
-        mock_result = MagicMock(
-            returncode=0, stdout=summary_response, stderr=""
+        summary_response = json.dumps(
+            {
+                "overview": "全体概要テスト",
+                "key_points": [
+                    {"category": "景気", "summary": "景気関連", "news_ids": [0, 1]},
+                ],
+                "portfolio_alert": "注意点テスト",
+            }
         )
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             result = generate_news_summary(self._make_news(), [])
             assert result is not None
             assert result["overview"] == "全体概要テスト"
@@ -661,15 +755,19 @@ class TestGenerateNewsSummary:
             assert result["portfolio_alert"] == "注意点テスト"
 
     def test_cache_hit(self):
-        summary_response = json.dumps({
-            "overview": "cached", "key_points": [], "portfolio_alert": "",
-        })
-        mock_result = MagicMock(
-            returncode=0, stdout=summary_response, stderr=""
+        summary_response = json.dumps(
+            {
+                "overview": "cached",
+                "key_points": [],
+                "portfolio_alert": "",
+            }
         )
+        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
         news = self._make_news()
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run,
+        ):
             # First call
             result1 = generate_news_summary(news, [], cache_ttl=3600)
             # Second call — should use cache
@@ -681,28 +779,36 @@ class TestGenerateNewsSummary:
         info = get_summary_cache_info()
         assert info["cached"] is False
 
-        summary_response = json.dumps({
-            "overview": "x", "key_points": [], "portfolio_alert": "",
-        })
-        mock_result = MagicMock(
-            returncode=0, stdout=summary_response, stderr=""
+        summary_response = json.dumps(
+            {
+                "overview": "x",
+                "key_points": [],
+                "portfolio_alert": "",
+            }
         )
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             generate_news_summary(self._make_news(), [], cache_ttl=3600)
 
         info = get_summary_cache_info()
         assert info["cached"] is True
 
     def test_clear_cache(self):
-        summary_response = json.dumps({
-            "overview": "x", "key_points": [], "portfolio_alert": "",
-        })
-        mock_result = MagicMock(
-            returncode=0, stdout=summary_response, stderr=""
+        summary_response = json.dumps(
+            {
+                "overview": "x",
+                "key_points": [],
+                "portfolio_alert": "",
+            }
         )
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             generate_news_summary(self._make_news(), [], cache_ttl=3600)
 
         assert get_summary_cache_info()["cached"] is True
@@ -710,30 +816,34 @@ class TestGenerateNewsSummary:
         assert get_summary_cache_info()["cached"] is False
 
     def test_cli_failure_returns_none(self):
-        mock_result = MagicMock(
-            returncode=1, stdout="", stderr="error"
-        )
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        mock_result = MagicMock(returncode=1, stdout="", stderr="error")
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             result = generate_news_summary(self._make_news(), [])
             assert result is None
 
     def test_source_is_news_summary(self):
         """Verify the CLI call uses source='news_summary'."""
-        summary_response = json.dumps({
-            "overview": "x", "key_points": [], "portfolio_alert": "",
-        })
-        mock_result = MagicMock(
-            returncode=0, stdout=summary_response, stderr=""
+        summary_response = json.dumps(
+            {
+                "overview": "x",
+                "key_points": [],
+                "portfolio_alert": "",
+            }
         )
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             generate_news_summary(self._make_news(), [])
 
-        from components.copilot_client import get_execution_logs
-        from components.copilot_client import clear_execution_logs
+        from components.copilot_client import clear_execution_logs, get_execution_logs
+
         logs = get_execution_logs()
-        summary_logs = [l for l in logs if l.source == "news_summary"]
+        summary_logs = [entry for entry in logs if entry.source == "news_summary"]
         assert len(summary_logs) >= 1
         clear_execution_logs()
 
@@ -745,18 +855,20 @@ class TestGenerateNewsSummary:
 
 class TestParseHealthSummaryResponse:
     def test_valid_json(self):
-        raw = json.dumps({
-            "overview": "PF全体は健全",
-            "stock_assessments": [
-                {
-                    "symbol": "7203.T",
-                    "name": "トヨタ",
-                    "assessment": "下降トレンド入り",
-                    "action": "注視",
-                },
-            ],
-            "risk_warning": "テック偏重リスク",
-        })
+        raw = json.dumps(
+            {
+                "overview": "PF全体は健全",
+                "stock_assessments": [
+                    {
+                        "symbol": "7203.T",
+                        "name": "トヨタ",
+                        "assessment": "下降トレンド入り",
+                        "action": "注視",
+                    },
+                ],
+                "risk_warning": "テック偏重リスク",
+            }
+        )
         result = _parse_health_summary_response(raw)
         assert result is not None
         assert result["overview"] == "PF全体は健全"
@@ -786,25 +898,29 @@ class TestParseHealthSummaryResponse:
         assert _parse_health_summary_response(raw) is None
 
     def test_empty_assessments(self):
-        raw = json.dumps({
-            "overview": "全銘柄健全",
-            "stock_assessments": [],
-            "risk_warning": "",
-        })
+        raw = json.dumps(
+            {
+                "overview": "全銘柄健全",
+                "stock_assessments": [],
+                "risk_warning": "",
+            }
+        )
         result = _parse_health_summary_response(raw)
         assert result is not None
         assert result["stock_assessments"] == []
         assert result["risk_warning"] == ""
 
     def test_multiple_assessments(self):
-        raw = json.dumps({
-            "overview": "一部注意",
-            "stock_assessments": [
-                {"symbol": "AAPL", "name": "Apple", "assessment": "OK", "action": "保有継続"},
-                {"symbol": "7203.T", "name": "トヨタ", "assessment": "下降", "action": "損切り検討"},
-            ],
-            "risk_warning": "",
-        })
+        raw = json.dumps(
+            {
+                "overview": "一部注意",
+                "stock_assessments": [
+                    {"symbol": "AAPL", "name": "Apple", "assessment": "OK", "action": "保有継続"},
+                    {"symbol": "7203.T", "name": "トヨタ", "assessment": "下降", "action": "損切り検討"},
+                ],
+                "risk_warning": "",
+            }
+        )
         result = _parse_health_summary_response(raw)
         assert result is not None
         assert len(result["stock_assessments"]) == 2
@@ -817,7 +933,6 @@ class TestParseHealthSummaryResponse:
 
 
 class TestGenerateHealthSummary:
-
     @staticmethod
     def _make_health_data():
         return {
@@ -864,22 +979,28 @@ class TestGenerateHealthSummary:
         }
 
     def test_not_available(self):
-        with patch("components.copilot_client.shutil.which", return_value=None), \
-             patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError):
+        with (
+            patch("components.copilot_client.shutil.which", return_value=None),
+            patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError),
+        ):
             result = generate_health_summary(self._make_health_data())
             assert result is None
 
     def test_success(self):
-        response = json.dumps({
-            "overview": "トヨタに注意が必要",
-            "stock_assessments": [
-                {"symbol": "7203.T", "name": "トヨタ", "assessment": "下降トレンド", "action": "損切り検討"},
-            ],
-            "risk_warning": "",
-        })
+        response = json.dumps(
+            {
+                "overview": "トヨタに注意が必要",
+                "stock_assessments": [
+                    {"symbol": "7203.T", "name": "トヨタ", "assessment": "下降トレンド", "action": "損切り検討"},
+                ],
+                "risk_warning": "",
+            }
+        )
         mock_result = MagicMock(returncode=0, stdout=response, stderr="")
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             result = generate_health_summary(self._make_health_data())
             assert result is not None
             assert "トヨタ" in result["overview"]
@@ -887,12 +1008,18 @@ class TestGenerateHealthSummary:
 
     def test_cache_hit(self):
         clear_health_summary_cache()
-        response = json.dumps({
-            "overview": "cached", "stock_assessments": [], "risk_warning": "",
-        })
+        response = json.dumps(
+            {
+                "overview": "cached",
+                "stock_assessments": [],
+                "risk_warning": "",
+            }
+        )
         mock_result = MagicMock(returncode=0, stdout=response, stderr="")
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run,
+        ):
             data = self._make_health_data()
             r1 = generate_health_summary(data, cache_ttl=3600)
             r2 = generate_health_summary(data, cache_ttl=3600)
@@ -903,12 +1030,18 @@ class TestGenerateHealthSummary:
         clear_health_summary_cache()
         assert get_health_summary_cache_info()["cached"] is False
 
-        response = json.dumps({
-            "overview": "x", "stock_assessments": [], "risk_warning": "",
-        })
+        response = json.dumps(
+            {
+                "overview": "x",
+                "stock_assessments": [],
+                "risk_warning": "",
+            }
+        )
         mock_result = MagicMock(returncode=0, stdout=response, stderr="")
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             generate_health_summary(self._make_health_data(), cache_ttl=3600)
 
         assert get_health_summary_cache_info()["cached"] is True
@@ -917,24 +1050,33 @@ class TestGenerateHealthSummary:
 
     def test_cli_failure_returns_none(self):
         mock_result = MagicMock(returncode=1, stdout="", stderr="error")
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             result = generate_health_summary(self._make_health_data())
             assert result is None
 
     def test_source_is_health_summary(self):
         """Verify the CLI call uses source='health_summary'."""
-        response = json.dumps({
-            "overview": "ok", "stock_assessments": [], "risk_warning": "",
-        })
+        response = json.dumps(
+            {
+                "overview": "ok",
+                "stock_assessments": [],
+                "risk_warning": "",
+            }
+        )
         mock_result = MagicMock(returncode=0, stdout=response, stderr="")
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             generate_health_summary(self._make_health_data())
 
-        from components.copilot_client import get_execution_logs, clear_execution_logs
+        from components.copilot_client import clear_execution_logs, get_execution_logs
+
         logs = get_execution_logs()
-        health_logs = [l for l in logs if l.source == "health_summary"]
+        health_logs = [entry for entry in logs if entry.source == "health_summary"]
         assert len(health_logs) >= 1
         clear_execution_logs()
 
@@ -951,16 +1093,20 @@ class TestGenerateHealthSummary:
                 },
             },
         ]
-        response = json.dumps({
-            "overview": "ニュースを踏まえると好転可能性あり",
-            "stock_assessments": [
-                {"symbol": "7203.T", "name": "トヨタ", "assessment": "下降中", "action": "注視"},
-            ],
-            "risk_warning": "",
-        })
+        response = json.dumps(
+            {
+                "overview": "ニュースを踏まえると好転可能性あり",
+                "stock_assessments": [
+                    {"symbol": "7203.T", "name": "トヨタ", "assessment": "下降中", "action": "注視"},
+                ],
+                "risk_warning": "",
+            }
+        )
         mock_result = MagicMock(returncode=0, stdout=response, stderr="")
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"), \
-             patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with (
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+        ):
             result = generate_health_summary(self._make_health_data(), news_items=news)
             assert result is not None
             assert "ニュース" in result["overview"]
@@ -1154,6 +1300,7 @@ class TestBuildHealthSummaryPrompt:
 # _extract_json_text tests
 # ---------------------------------------------------------------------------
 
+
 class TestExtractJsonText:
     """応答テキストからJSON部分を抽出する共通ヘルパーのテスト."""
 
@@ -1195,6 +1342,7 @@ class TestExtractJsonText:
 # _compute_unified_hash tests
 # ---------------------------------------------------------------------------
 
+
 class TestComputeUnifiedHash:
     """統合分析ハッシュのテスト."""
 
@@ -1212,9 +1360,9 @@ class TestComputeUnifiedHash:
     def test_health_data_changes_hash(self):
         news = [{"title": "テスト"}]
         h1 = _compute_unified_hash(news)
-        h2 = _compute_unified_hash(news, health_data={
-            "positions": [{"symbol": "7203.T", "alert_level": "caution", "pnl_pct": -5.0}]
-        })
+        h2 = _compute_unified_hash(
+            news, health_data={"positions": [{"symbol": "7203.T", "alert_level": "caution", "pnl_pct": -5.0}]}
+        )
         assert h1 != h2
 
     def test_no_health_data(self):
@@ -1231,6 +1379,7 @@ class TestComputeUnifiedHash:
 # ---------------------------------------------------------------------------
 # Unified cache tests
 # ---------------------------------------------------------------------------
+
 
 class TestUnifiedCache:
     """統合分析キャッシュのテスト."""
@@ -1254,6 +1403,7 @@ class TestUnifiedCache:
 # _build_unified_prompt tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildUnifiedPrompt:
     """統合分析プロンプトの構築テスト."""
 
@@ -1274,12 +1424,17 @@ class TestBuildUnifiedPrompt:
             "summary": {"total": 2, "healthy": 1, "early_warning": 1, "caution": 0, "exit": 0},
             "positions": [
                 {
-                    "symbol": "7203.T", "name": "トヨタ自動車",
-                    "alert_level": "early_warning", "trend": "下降",
-                    "rsi": 35.0, "pnl_pct": -3.5,
+                    "symbol": "7203.T",
+                    "name": "トヨタ自動車",
+                    "alert_level": "early_warning",
+                    "trend": "下降",
+                    "rsi": 35.0,
+                    "pnl_pct": -3.5,
                     "alert_reasons": ["RSI低下"],
-                    "value_trap": False, "cross_signal": "none",
-                    "change_quality": "", "return_stability": "",
+                    "value_trap": False,
+                    "cross_signal": "none",
+                    "change_quality": "",
+                    "return_stability": "",
                 },
             ],
             "sell_alerts": [],
@@ -1304,7 +1459,8 @@ class TestBuildUnifiedPrompt:
 
     def test_prompt_with_health_data(self):
         prompt = _build_unified_prompt(
-            self._make_news_list(), self._make_positions(),
+            self._make_news_list(),
+            self._make_positions(),
             health_data=self._make_health_data(),
         )
         assert "T3" in prompt
@@ -1314,7 +1470,8 @@ class TestBuildUnifiedPrompt:
 
     def test_prompt_without_health_data(self):
         prompt = _build_unified_prompt(
-            self._make_news_list(), self._make_positions(),
+            self._make_news_list(),
+            self._make_positions(),
             health_data=None,
         )
         assert "T3" not in prompt
@@ -1326,7 +1483,8 @@ class TestBuildUnifiedPrompt:
         health_data["positions"][0]["pbr"] = 1.2
         health_data["positions"][0]["roe"] = 0.15
         prompt = _build_unified_prompt(
-            self._make_news_list(), self._make_positions(),
+            self._make_news_list(),
+            self._make_positions(),
             health_data=health_data,
         )
         assert "PE12" in prompt or "PE13" in prompt
@@ -1338,7 +1496,8 @@ class TestBuildUnifiedPrompt:
         health_data["positions"][0]["cross_signal"] = "golden_cross"
         health_data["positions"][0]["days_since_cross"] = 3
         prompt = _build_unified_prompt(
-            self._make_news_list(), self._make_positions(),
+            self._make_news_list(),
+            self._make_positions(),
             health_data=health_data,
         )
         assert "GC(3d)" in prompt
@@ -1347,6 +1506,7 @@ class TestBuildUnifiedPrompt:
 # ---------------------------------------------------------------------------
 # _parse_unified_response tests
 # ---------------------------------------------------------------------------
+
 
 class TestParseUnifiedResponse:
     """統合分析応答のパーステスト."""
@@ -1451,6 +1611,7 @@ class TestParseUnifiedResponse:
 # apply_news_analysis tests
 # ---------------------------------------------------------------------------
 
+
 class TestApplyNewsAnalysis:
     """統合分析結果のニュースへの適用テスト."""
 
@@ -1536,8 +1697,7 @@ class TestApplyNewsAnalysis:
 
     def test_invalid_impact_level_normalized(self):
         news = self._make_news_items()
-        analysis = [{"id": 0, "categories": [], "impact_level": "invalid",
-                      "affected_holdings": [], "reason": ""}]
+        analysis = [{"id": 0, "categories": [], "impact_level": "invalid", "affected_holdings": [], "reason": ""}]
         result = apply_news_analysis(news, analysis)
         analyzed = [n for n in result if n.get("analysis_method") == "llm"]
         assert analyzed[0]["portfolio_impact"]["impact_level"] == "none"
@@ -1546,6 +1706,7 @@ class TestApplyNewsAnalysis:
 # ---------------------------------------------------------------------------
 # run_unified_analysis tests
 # ---------------------------------------------------------------------------
+
 
 class TestRunUnifiedAnalysis:
     """統合分析のエンドツーエンドテスト."""
@@ -1574,24 +1735,28 @@ class TestRunUnifiedAnalysis:
         ]
 
     def _make_valid_llm_response(self):
-        return json.dumps({
-            "news_analysis": [
-                {
-                    "id": 0, "categories": ["金利"],
-                    "impact_level": "medium",
-                    "affected_holdings": ["7203.T"],
-                    "reason": "利上げ",
-                },
-            ],
-            "news_summary": {
-                "overview": "日銀利上げに注目",
-                "key_points": [
-                    {"category": "金利", "summary": "利上げ", "news_ids": [0]},
+        return json.dumps(
+            {
+                "news_analysis": [
+                    {
+                        "id": 0,
+                        "categories": ["金利"],
+                        "impact_level": "medium",
+                        "affected_holdings": ["7203.T"],
+                        "reason": "利上げ",
+                    },
                 ],
-                "portfolio_alert": "",
+                "news_summary": {
+                    "overview": "日銀利上げに注目",
+                    "key_points": [
+                        {"category": "金利", "summary": "利上げ", "news_ids": [0]},
+                    ],
+                    "portfolio_alert": "",
+                },
+                "health_summary": None,
             },
-            "health_summary": None,
-        }, ensure_ascii=False)
+            ensure_ascii=False,
+        )
 
     @patch("components.llm_analyzer.is_available", return_value=False)
     def test_returns_none_when_unavailable(self, _mock):
@@ -1639,40 +1804,53 @@ class TestRunUnifiedAnalysis:
     @patch("components.llm_analyzer.copilot_call")
     @patch("components.llm_analyzer.is_available", return_value=True)
     def test_with_health_data(self, _avail, mock_call):
-        response = json.dumps({
-            "news_analysis": [
-                {"id": 0, "categories": ["金利"], "impact_level": "high",
-                 "affected_holdings": ["7203.T"], "reason": "利上げ"},
-            ],
-            "news_summary": {
-                "overview": "概要",
-                "key_points": [],
-                "portfolio_alert": "",
-            },
-            "health_summary": {
-                "overview": "概ね健全",
-                "stock_assessments": [
-                    {"symbol": "7203.T", "name": "トヨタ",
-                     "assessment": "やや軟調", "action": "様子見"},
+        response = json.dumps(
+            {
+                "news_analysis": [
+                    {
+                        "id": 0,
+                        "categories": ["金利"],
+                        "impact_level": "high",
+                        "affected_holdings": ["7203.T"],
+                        "reason": "利上げ",
+                    },
                 ],
-                "risk_warning": "",
+                "news_summary": {
+                    "overview": "概要",
+                    "key_points": [],
+                    "portfolio_alert": "",
+                },
+                "health_summary": {
+                    "overview": "概ね健全",
+                    "stock_assessments": [
+                        {"symbol": "7203.T", "name": "トヨタ", "assessment": "やや軟調", "action": "様子見"},
+                    ],
+                    "risk_warning": "",
+                },
             },
-        }, ensure_ascii=False)
+            ensure_ascii=False,
+        )
         mock_call.return_value = response
         health_data = {
             "summary": {"total": 1, "healthy": 1, "early_warning": 0, "caution": 0, "exit": 0},
             "positions": [
-                {"symbol": "7203.T", "name": "トヨタ", "alert_level": "none",
-                 "trend": "上昇", "rsi": 55, "pnl_pct": 5.0,
-                 "alert_reasons": [], "value_trap": False,
-                 "cross_signal": "none", "change_quality": "",
-                 "return_stability": ""},
+                {
+                    "symbol": "7203.T",
+                    "name": "トヨタ",
+                    "alert_level": "none",
+                    "trend": "上昇",
+                    "rsi": 55,
+                    "pnl_pct": 5.0,
+                    "alert_reasons": [],
+                    "value_trap": False,
+                    "cross_signal": "none",
+                    "change_quality": "",
+                    "return_stability": "",
+                },
             ],
             "sell_alerts": [],
         }
-        result = run_unified_analysis(
-            self._make_news(), self._make_positions(), health_data
-        )
+        result = run_unified_analysis(self._make_news(), self._make_positions(), health_data)
         assert result is not None
         assert result["health_summary"] is not None
         assert result["health_summary"]["overview"] == "概ね健全"

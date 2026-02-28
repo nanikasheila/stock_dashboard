@@ -1,22 +1,16 @@
 """Tests for copilot_client — generic Copilot CLI client."""
 
 import sys
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-_SCRIPTS_DIR = str(
-    Path(__file__).resolve().parents[1]
-)
+_SCRIPTS_DIR = str(Path(__file__).resolve().parents[1])
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
 from components.copilot_client import (
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
-    CLICallLog,
     call,
     clear_execution_logs,
     get_execution_logs,
@@ -33,14 +27,18 @@ class TestIsAvailable:
             assert is_available() is True
 
     def test_found_by_subprocess(self):
-        with patch("components.copilot_client.shutil.which", return_value=None), \
-             patch("components.copilot_client.subprocess.run") as mock_run:
+        with (
+            patch("components.copilot_client.shutil.which", return_value=None),
+            patch("components.copilot_client.subprocess.run") as mock_run,
+        ):
             mock_run.return_value = MagicMock(returncode=0)
             assert is_available() is True
 
     def test_not_found(self):
-        with patch("components.copilot_client.shutil.which", return_value=None), \
-             patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError):
+        with (
+            patch("components.copilot_client.shutil.which", return_value=None),
+            patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError),
+        ):
             assert is_available() is False
 
 
@@ -61,11 +59,11 @@ class TestModels:
 
     def test_has_premium_models(self):
         labels = [m[1] for m in AVAILABLE_MODELS]
-        assert any("Premium" in l for l in labels)
+        assert any("Premium" in label for label in labels)
 
     def test_has_low_cost_models(self):
         labels = [m[1] for m in AVAILABLE_MODELS]
-        assert any("低コスト" in l for l in labels)
+        assert any("低コスト" in label for label in labels)
 
 
 # ---------------------------------------------------------------------------
@@ -86,14 +84,15 @@ class TestCall:
 
     def test_returns_none_on_timeout(self):
         import subprocess
-        with patch("components.copilot_client.subprocess.run",
-                   side_effect=subprocess.TimeoutExpired(cmd="copilot", timeout=60)):
+
+        with patch(
+            "components.copilot_client.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="copilot", timeout=60)
+        ):
             result = call("test prompt", timeout=60)
         assert result is None
 
     def test_returns_none_when_not_found(self):
-        with patch("components.copilot_client.subprocess.run",
-                   side_effect=FileNotFoundError):
+        with patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError):
             result = call("test prompt")
         assert result is None
 
@@ -148,8 +147,10 @@ class TestExecutionLogs:
 
     def test_records_timeout(self):
         import subprocess
-        with patch("components.copilot_client.subprocess.run",
-                   side_effect=subprocess.TimeoutExpired(cmd="copilot", timeout=30)):
+
+        with patch(
+            "components.copilot_client.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="copilot", timeout=30)
+        ):
             call("test prompt", timeout=30)
         logs = get_execution_logs()
         assert len(logs) == 1
