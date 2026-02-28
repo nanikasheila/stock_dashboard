@@ -19,7 +19,19 @@ import pytest
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
+from src.core.screening.alpha import (
+    compute_accruals_score,
+    compute_change_score,
+    compute_fcf_yield_score,
+    compute_revenue_acceleration_score,
+    compute_roe_trend_score,
+)
 from src.core.screening.indicators import (
+    _score_dividend,
+    _score_growth,
+    _score_pbr,
+    _score_per,
+    _score_roe,
     assess_return_stability,
     calculate_shareholder_return,
     calculate_shareholder_return_history,
@@ -33,25 +45,12 @@ from src.core.screening.indicators import (
     is_undervalued_pbr,
     is_undervalued_per,
     run_consistency_checks,
-    _score_per,
-    _score_pbr,
-    _score_dividend,
-    _score_roe,
-    _score_growth,
-)
-from src.core.screening.alpha import (
-    compute_accruals_score,
-    compute_change_score,
-    compute_fcf_yield_score,
-    compute_revenue_acceleration_score,
-    compute_roe_trend_score,
 )
 from src.core.screening.technicals import (
     compute_bollinger_bands,
     compute_rsi,
     detect_pullback_in_uptrend,
 )
-
 
 # ===========================================================================
 # indicators.py — ブール判定
@@ -339,13 +338,15 @@ class TestCalculateValueScore:
             "roe": 0.20,
             "revenue_growth": 0.25,
         }
-        score_raw = calculate_value_score({
-            "trailingPE": 8.0,
-            "priceToBook": 0.5,
-            "dividendYield": 0.06,
-            "returnOnEquity": 0.20,
-            "revenueGrowth": 0.25,
-        })
+        score_raw = calculate_value_score(
+            {
+                "trailingPE": 8.0,
+                "priceToBook": 0.5,
+                "dividendYield": 0.06,
+                "returnOnEquity": 0.20,
+                "revenueGrowth": 0.25,
+            }
+        )
         score_norm = calculate_value_score(stock)
         assert score_norm == pytest.approx(score_raw, abs=0.01)
 
@@ -788,7 +789,7 @@ class TestComputeAccrualsScore:
             "total_assets": 1000,
         }
         # accruals = (200 - 50) / 1000 = 0.15
-        score, raw = compute_accruals_score(stock)
+        score, _raw = compute_accruals_score(stock)
         assert score == 0.0
 
     def test_utilities_sector_capped_at_15(self):
@@ -837,7 +838,7 @@ class TestComputeRevenueAccelerationScore:
         # rev0=1.3, rev1=1.0, rev2=0.95
         # current_growth = 0.3, previous_growth ≈ 0.0526, acceleration ≈ 0.247
         stock = {"revenue_history": [1.3, 1.0, 0.95]}
-        score, acc = compute_revenue_acceleration_score(stock)
+        score, _acc = compute_revenue_acceleration_score(stock)
         assert score == 25.0
 
     def test_no_acceleration_gives_partial_score(self):
@@ -935,7 +936,7 @@ class TestComputeRoeTrendScore:
             "equity_history": [1000, 1000, 1000],
         }
         # roes = [0.08, 0.10, 0.12] → slope < 0
-        score, slope = compute_roe_trend_score(stock)
+        score, _slope = compute_roe_trend_score(stock)
         assert score <= 10.0
 
     def test_negative_roe_returns_zero(self):
@@ -1011,7 +1012,8 @@ class TestComputeChangeScore:
         stock_without_penalty = {}
 
         result_penalty = compute_change_score(stock_with_penalty)
-        result_no_penalty = compute_change_score(stock_without_penalty)
+        # Why: Only need to verify penalty variant; no-penalty variant tested elsewhere
+        _result_no_penalty = compute_change_score(stock_without_penalty)
 
         # ペナルティ版は earnings_penalty が負の値
         assert result_penalty["earnings_penalty"] == -20.0
@@ -1046,9 +1048,14 @@ class TestComputeChangeScore:
         """戻り値に必要なキーが全て含まれていること."""
         result = compute_change_score({})
         required_keys = {
-            "change_score", "accruals", "revenue_acceleration",
-            "fcf_yield", "roe_trend", "earnings_penalty",
-            "passed_count", "quality_pass",
+            "change_score",
+            "accruals",
+            "revenue_acceleration",
+            "fcf_yield",
+            "roe_trend",
+            "earnings_penalty",
+            "passed_count",
+            "quality_pass",
         }
         assert required_keys.issubset(result.keys())
 
@@ -1136,14 +1143,14 @@ class TestComputeBollingerBands:
     def test_nan_before_period(self):
         """period 前の値は NaN になること."""
         prices = _make_price_series(50)
-        upper, middle, lower = compute_bollinger_bands(prices, period=20)
+        upper, _middle, _lower = compute_bollinger_bands(prices, period=20)
         assert upper.iloc[:19].isna().all()
 
     def test_custom_std_dev(self):
         """std_dev パラメータが幅に反映されること."""
         prices = _make_price_series(100)
-        upper1, middle1, lower1 = compute_bollinger_bands(prices, std_dev=1.0)
-        upper2, middle2, lower2 = compute_bollinger_bands(prices, std_dev=2.0)
+        upper1, _middle1, lower1 = compute_bollinger_bands(prices, std_dev=1.0)
+        upper2, _middle2, lower2 = compute_bollinger_bands(prices, std_dev=2.0)
         valid = upper1.dropna().index
         # std_dev=2 の方が幅が広い
         assert (upper2[valid] > upper1[valid]).all()
@@ -1199,10 +1206,19 @@ class TestDetectPullbackInUptrend:
         hist = _make_hist_df(n=250)
         result = detect_pullback_in_uptrend(hist)
         required_keys = {
-            "uptrend", "is_pullback", "pullback_pct",
-            "bounce_signal", "bounce_score", "bounce_details",
-            "rsi", "volume_ratio", "sma50", "sma200",
-            "current_price", "recent_high", "all_conditions",
+            "uptrend",
+            "is_pullback",
+            "pullback_pct",
+            "bounce_signal",
+            "bounce_score",
+            "bounce_details",
+            "rsi",
+            "volume_ratio",
+            "sma50",
+            "sma200",
+            "current_price",
+            "recent_high",
+            "all_conditions",
         }
         assert required_keys.issubset(result.keys())
 
@@ -1211,9 +1227,12 @@ class TestDetectPullbackInUptrend:
         hist = _make_hist_df(n=250)
         result = detect_pullback_in_uptrend(hist)
         expected_keys = {
-            "rsi_reversal", "rsi_depth_bonus",
-            "bb_proximity", "volume_surge",
-            "price_reversal", "lookback_day",
+            "rsi_reversal",
+            "rsi_depth_bonus",
+            "bb_proximity",
+            "volume_surge",
+            "price_reversal",
+            "lookback_day",
         }
         assert expected_keys.issubset(result["bounce_details"].keys())
 

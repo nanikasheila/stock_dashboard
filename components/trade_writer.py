@@ -11,7 +11,6 @@ How: Uses history_store.save_trade for JSON persistence, then dispatches to
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from contextlib import AbstractContextManager
 
@@ -115,8 +114,7 @@ def _update_cash_if_needed(
 
     if settlement_amount <= 0:
         logger.warning(
-            "Cash position NOT updated: settlement resolved to 0 "
-            "(symbol=%s, shares=%d, price=%.4f)",
+            "Cash position NOT updated: settlement resolved to 0 (symbol=%s, shares=%d, price=%.4f)",
             symbol,
             shares,
             price,
@@ -260,9 +258,7 @@ def record_trade(
                 shares,
                 exc,
             )
-            raise RuntimeError(
-                f"取引はJSONに保存されましたが、ポートフォリオCSVの更新に失敗しました: {exc}"
-            ) from exc
+            raise RuntimeError(f"取引はJSONに保存されましたが、ポートフォリオCSVの更新に失敗しました: {exc}") from exc
 
     elif trade_type_lower == "sell":
         try:
@@ -299,9 +295,7 @@ def record_trade(
                 shares,
                 exc,
             )
-            raise RuntimeError(
-                f"取引はJSONに保存されましたが、ポートフォリオCSVの更新に失敗しました: {exc}"
-            ) from exc
+            raise RuntimeError(f"取引はJSONに保存されましたが、ポートフォリオCSVの更新に失敗しました: {exc}") from exc
 
     # transfer: JSON only — no CSV change needed
     type_label = {"buy": "購入", "sell": "売却", "transfer": "振替"}[trade_type_lower]

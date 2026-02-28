@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -23,7 +23,6 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.core.return_estimate import (
     RETURN_CAP,
-    MIN_SPREAD,
     _compute_buyback_yield,
     _empty_estimate,
     _estimate_from_analyst,
@@ -151,8 +150,12 @@ class TestEstimateFromAnalyst:
     def test_all_targets_present(self):
         """high/mean/low が全て揃っていると3シナリオ全て返る."""
         detail = _make_analyst_detail(
-            price=100.0, target_low=90.0, target_mean=110.0, target_high=130.0,
-            dividend_yield=0.0, analyst_count=5,
+            price=100.0,
+            target_low=90.0,
+            target_mean=110.0,
+            target_high=130.0,
+            dividend_yield=0.0,
+            analyst_count=5,
         )
         result = _estimate_from_analyst(detail)
         assert result["method"] == "analyst"
@@ -163,8 +166,12 @@ class TestEstimateFromAnalyst:
     def test_dividend_yield_added(self):
         """dividend_yield が各シナリオに加算される."""
         detail = _make_analyst_detail(
-            price=100.0, target_mean=110.0, target_low=90.0, target_high=130.0,
-            dividend_yield=0.03, analyst_count=5,
+            price=100.0,
+            target_mean=110.0,
+            target_low=90.0,
+            target_high=130.0,
+            dividend_yield=0.03,
+            analyst_count=5,
         )
         result = _estimate_from_analyst(detail)
         assert result["base"] == pytest.approx((110 - 100) / 100 + 0.03)
@@ -186,7 +193,10 @@ class TestEstimateFromAnalyst:
     def test_few_analysts_adds_spread(self):
         """アナリスト数が 2 以下のとき spread が付与される."""
         detail = _make_analyst_detail(
-            price=100.0, target_low=110.0, target_mean=110.0, target_high=110.0,
+            price=100.0,
+            target_low=110.0,
+            target_mean=110.0,
+            target_high=110.0,
             analyst_count=2,
         )
         result = _estimate_from_analyst(detail)
@@ -196,7 +206,10 @@ class TestEstimateFromAnalyst:
     def test_identical_targets_adds_spread(self):
         """high == low のとき spread が付与される."""
         detail = _make_analyst_detail(
-            price=100.0, target_low=110.0, target_mean=110.0, target_high=110.0,
+            price=100.0,
+            target_low=110.0,
+            target_mean=110.0,
+            target_high=110.0,
             analyst_count=5,
         )
         result = _estimate_from_analyst(detail)
@@ -342,9 +355,17 @@ class TestEstimateStockReturn:
         detail = _make_analyst_detail()
         result = estimate_stock_return("AAPL", detail, news=[{"title": "Apple news"}])
         required_keys = [
-            "symbol", "name", "price", "currency",
-            "optimistic", "base", "pessimistic", "method",
-            "analyst_count", "dividend_yield", "news",
+            "symbol",
+            "name",
+            "price",
+            "currency",
+            "optimistic",
+            "base",
+            "pessimistic",
+            "method",
+            "analyst_count",
+            "dividend_yield",
+            "news",
         ]
         for key in required_keys:
             assert key in result, f"Missing key: {key}"
@@ -457,10 +478,13 @@ class TestEstimatePortfolioReturn:
     def test_weighted_average_calculation(self, tmp_path: Path):
         """ポートフォリオ加重平均が計算される（2銘柄）."""
         csv_file = tmp_path / "portfolio.csv"
-        _write_csv(csv_file, [
-            "AAPL,10,180,USD,2024-01-01,",
-            "VTI,5,200,USD,2024-01-01,",
-        ])
+        _write_csv(
+            csv_file,
+            [
+                "AAPL,10,180,USD,2024-01-01,",
+                "VTI,5,200,USD,2024-01-01,",
+            ],
+        )
 
         def _detail_side_effect(symbol: str):
             return {

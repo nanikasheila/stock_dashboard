@@ -26,9 +26,7 @@ def is_etf(stock_detail: dict) -> bool:
     has_net_income = bool(stock_detail.get("net_income_stmt"))
     has_operating_cf = bool(stock_detail.get("operating_cashflow"))
     has_revenue_hist = bool(stock_detail.get("revenue_history"))
-    if not has_sector and not has_net_income and not has_operating_cf and not has_revenue_hist:
-        return True
-    return False
+    return not has_sector and not has_net_income and not has_operating_cf and not has_revenue_hist
 
 
 def safe_float(value, default: float = 0.0) -> float:

@@ -22,10 +22,12 @@ import time
 from typing import Any
 
 from components.copilot_client import (
-    AVAILABLE_MODELS,  # re-export: app.py からの参照を維持
+    AVAILABLE_MODELS,  # noqa: F401 — re-export: app.py / tests から参照
     DEFAULT_MODEL,
+    is_available,  # re-export
+)
+from components.copilot_client import (
     call as copilot_call,
-    is_available,      # re-export
 )
 
 logger = logging.getLogger(__name__)
@@ -62,10 +64,10 @@ _CATEGORY_ICONS: dict[str, dict[str, str]] = {
 # 分析キャッシュ: ニュースが変わらなければ LLM 再呼び出しをスキップ
 # ---------------------------------------------------------------------------
 _analysis_cache: dict[str, Any] = {
-    "hash": "",          # ニュースタイトル一覧の SHA-256
-    "results": None,     # 前回の分析結果
-    "timestamp": 0.0,    # 前回分析時刻 (time.time())
-    "model": "",         # 前回使用モデル
+    "hash": "",  # ニュースタイトル一覧の SHA-256
+    "results": None,  # 前回の分析結果
+    "timestamp": 0.0,  # 前回分析時刻 (time.time())
+    "model": "",  # 前回使用モデル
 }
 
 
@@ -154,7 +156,8 @@ def analyze_news_batch(
         age = int(time.time() - _analysis_cache["timestamp"])
         logger.info(
             "[llm_analyzer] cache hit (age=%ds, ttl=%ds) — skipping LLM call",
-            age, cache_ttl,
+            age,
+            cache_ttl,
         )
         return _analysis_cache["results"]
 
@@ -167,12 +170,14 @@ def analyze_news_batch(
         title = item.get("title", "")
         if not title:
             continue
-        news_list.append({
-            "id": i,
-            "title": title,
-            "publisher": item.get("publisher", ""),
-            "source": item.get("source_name", ""),
-        })
+        news_list.append(
+            {
+                "id": i,
+                "title": title,
+                "publisher": item.get("publisher", ""),
+                "source": item.get("source_name", ""),
+            }
+        )
 
     if not news_list:
         return []
@@ -181,7 +186,9 @@ def analyze_news_batch(
 
     try:
         raw = copilot_call(
-            prompt, model=mdl, timeout=timeout,
+            prompt,
+            model=mdl,
+            timeout=timeout,
             source="news_analysis",
         )
         if raw is None:
@@ -315,18 +322,22 @@ def _parse_response(raw_text: str, expected_count: int) -> list[dict] | None:
             else:
                 continue
             if cat_name in _CATEGORY_ICONS:
-                categories.append({
-                    "category": cat_name,
-                    **_CATEGORY_ICONS[cat_name],
-                })
+                categories.append(
+                    {
+                        "category": cat_name,
+                        **_CATEGORY_ICONS[cat_name],
+                    }
+                )
 
-        results.append({
-            "id": item.get("id", len(results)),
-            "categories": categories,
-            "impact_level": item.get("impact_level", "none"),
-            "affected_holdings": item.get("affected_holdings", []),
-            "reason": item.get("reason", ""),
-        })
+        results.append(
+            {
+                "id": item.get("id", len(results)),
+                "categories": categories,
+                "impact_level": item.get("impact_level", "none"),
+                "affected_holdings": item.get("affected_holdings", []),
+                "reason": item.get("reason", ""),
+            }
+        )
 
     return results
 
@@ -427,7 +438,9 @@ def generate_news_summary(
 
     try:
         raw = copilot_call(
-            prompt, model=mdl, timeout=timeout,
+            prompt,
+            model=mdl,
+            timeout=timeout,
             source="news_summary",
         )
         if raw is None:
@@ -455,10 +468,7 @@ def _build_summary_prompt(news_items: list[dict], positions: list[dict]) -> str:
         if not title:
             continue
         impact = item.get("portfolio_impact", {}).get("impact_level", "none")
-        cats = ", ".join(
-            c.get("category", "") if isinstance(c, dict) else str(c)
-            for c in item.get("categories", [])
-        )
+        cats = ", ".join(c.get("category", "") if isinstance(c, dict) else str(c) for c in item.get("categories", []))
         reason = item.get("portfolio_impact", {}).get("reason", "")
         news_lines.append(f"[{i}] {title} | 影響={impact} | 分野={cats} | 理由={reason}")
 
@@ -545,13 +555,15 @@ def _parse_summary_response(raw_text: str) -> dict | None:
             continue
         cat_name = pt.get("category", "")
         cat_info = _CATEGORY_ICONS.get(cat_name, {})
-        key_points.append({
-            "category": cat_name,
-            "icon": cat_info.get("icon", "📌"),
-            "label": cat_info.get("label", cat_name),
-            "summary": pt.get("summary", ""),
-            "news_ids": pt.get("news_ids", []),
-        })
+        key_points.append(
+            {
+                "category": cat_name,
+                "icon": cat_info.get("icon", "📌"),
+                "label": cat_info.get("label", cat_name),
+                "summary": pt.get("summary", ""),
+                "news_ids": pt.get("news_ids", []),
+            }
+        )
 
     return {
         "overview": overview,
@@ -670,7 +682,9 @@ def generate_health_summary(
 
     try:
         raw = copilot_call(
-            prompt, model=mdl, timeout=timeout,
+            prompt,
+            model=mdl,
+            timeout=timeout,
             source="health_summary",
         )
         if raw is None:
@@ -755,10 +769,7 @@ def _build_health_summary_prompt(
         fund_str = ", ".join(fund_parts) if fund_parts else ""
         sector_str = f"{sector}/{industry}" if sector else ""
 
-        line = (
-            f"- {name}({symbol}): 判定={alert}, トレンド={trend}, "
-            f"RSI={rsi:.1f}, 損益={pnl:+.1f}%, 理由={reasons}"
-        )
+        line = f"- {name}({symbol}): 判定={alert}, トレンド={trend}, RSI={rsi:.1f}, 損益={pnl:+.1f}%, 理由={reasons}"
         if extras:
             line += f", 補足={extras}"
         if sector_str:
@@ -783,15 +794,9 @@ def _build_health_summary_prompt(
     news_section = ""
     if news_items:
         # PF影響があるニュースを優先的に含める
-        impact_news = [
-            n for n in news_items
-            if n.get("portfolio_impact", {}).get("impact_level", "none") != "none"
-        ]
+        impact_news = [n for n in news_items if n.get("portfolio_impact", {}).get("impact_level", "none") != "none"]
         # 影響ニュースが少なければ、その他のニュースも少し含める
-        other_news = [
-            n for n in news_items
-            if n.get("portfolio_impact", {}).get("impact_level", "none") == "none"
-        ]
+        other_news = [n for n in news_items if n.get("portfolio_impact", {}).get("impact_level", "none") == "none"]
 
         news_lines: list[str] = []
         for n in impact_news[:10]:
@@ -817,8 +822,8 @@ def _build_health_summary_prompt(
     return f"""あなたはポートフォリオのヘルスチェック分析の専門家です。以下のヘルスチェック結果、ファンダメンタルデータ、関連ニュースを総合的に読み、投資家向けの簡潔なサマリーを作成してください。
 
 ## サマリー統計
-- 合計: {summary.get('total', 0)}銘柄
-- 健全: {summary.get('healthy', 0)}, 早期警告: {summary.get('early_warning', 0)}, 注意: {summary.get('caution', 0)}, 撤退: {summary.get('exit', 0)}
+- 合計: {summary.get("total", 0)}銘柄
+- 健全: {summary.get("healthy", 0)}, 早期警告: {summary.get("early_warning", 0)}, 注意: {summary.get("caution", 0)}, 撤退: {summary.get("exit", 0)}
 
 ## 各銘柄のヘルスチェック結果 & ファンダメンタルデータ
 {pos_text}
@@ -899,12 +904,14 @@ def _parse_health_summary_response(raw_text: str) -> dict | None:
     for sa in raw_assessments:
         if not isinstance(sa, dict):
             continue
-        stock_assessments.append({
-            "symbol": sa.get("symbol", ""),
-            "name": sa.get("name", ""),
-            "assessment": sa.get("assessment", ""),
-            "action": sa.get("action", ""),
-        })
+        stock_assessments.append(
+            {
+                "symbol": sa.get("symbol", ""),
+                "name": sa.get("name", ""),
+                "assessment": sa.get("assessment", ""),
+                "action": sa.get("action", ""),
+            }
+        )
 
     return {
         "overview": overview,
@@ -957,9 +964,7 @@ def _compute_unified_hash(
     # ヘルスチェックデータ
     if health_data:
         for p in health_data.get("positions", []):
-            parts.append(
-                f"pos:{p.get('symbol', '')}:{p.get('alert_level', '')}:{p.get('pnl_pct', 0)}"
-            )
+            parts.append(f"pos:{p.get('symbol', '')}:{p.get('alert_level', '')}:{p.get('pnl_pct', 0)}")
     return hashlib.sha256("\n".join(sorted(parts)).encode()).hexdigest()
 
 
@@ -1024,7 +1029,8 @@ def run_unified_analysis(
         age = int(time.time() - _unified_cache["timestamp"])
         logger.info(
             "[llm_analyzer] unified cache hit (age=%ds, ttl=%ds) — skipping LLM call",
-            age, cache_ttl,
+            age,
+            cache_ttl,
         )
         return _unified_cache["result"]
 
@@ -1040,7 +1046,10 @@ def run_unified_analysis(
         # ニュースがなくても health_data があればヘルスチェックだけ実行
         if health_data:
             hc_result = generate_health_summary(
-                health_data, model=mdl, timeout=timeout, cache_ttl=cache_ttl,
+                health_data,
+                model=mdl,
+                timeout=timeout,
+                cache_ttl=cache_ttl,
             )
             return {
                 "news_analysis": [],
@@ -1050,12 +1059,16 @@ def run_unified_analysis(
         return {"news_analysis": [], "news_summary": None, "health_summary": None}
 
     prompt = _build_unified_prompt(
-        news_list, positions, health_data=health_data,
+        news_list,
+        positions,
+        health_data=health_data,
     )
 
     try:
         raw = copilot_call(
-            prompt, model=mdl, timeout=timeout,
+            prompt,
+            model=mdl,
+            timeout=timeout,
             source="unified_analysis",
         )
         if raw is None:
@@ -1081,7 +1094,7 @@ def _build_unified_prompt(
     """統合分析用プロンプトを構築する."""
     pf_summary = _build_portfolio_summary(positions)
     # ニュースはコンパクトに（1行1件、id:タイトル）
-    news_lines = "\n".join(f'{n["id"]}:{n["title"]}' for n in news_list)
+    news_lines = "\n".join(f"{n['id']}:{n['title']}" for n in news_list)
 
     # ヘルスチェックセクションの構築（アラート銘柄のみ送信してトークン節約）
     health_section = ""
@@ -1141,13 +1154,11 @@ def _build_unified_prompt(
 
         alert_lines: list[str] = []
         for a in sell_alerts:
-            alert_lines.append(
-                f"- {a.get('symbol', '')} {a.get('urgency', '')} {a.get('reason', '')}"
-            )
+            alert_lines.append(f"- {a.get('symbol', '')} {a.get('urgency', '')} {a.get('reason', '')}")
         alert_text = "\n".join(alert_lines) if alert_lines else ""
 
         health_section = f"""
-## HC {summary.get('total', 0)}銘柄: 健全{summary.get('healthy', 0)} 警告{summary.get('early_warning', 0)} 注意{summary.get('caution', 0)} 撤退{summary.get('exit', 0)}
+## HC {summary.get("total", 0)}銘柄: 健全{summary.get("healthy", 0)} 警告{summary.get("early_warning", 0)} 注意{summary.get("caution", 0)} 撤退{summary.get("exit", 0)}
 {pos_text}"""
         if alert_text:
             health_section += f"\n### 売り通知\n{alert_text}"
@@ -1201,21 +1212,23 @@ def _parse_unified_response(raw_text: str, expected_news_count: int) -> dict | N
             raw_cats = item.get("categories", [])
             categories: list[dict] = []
             for cat in raw_cats:
-                cat_name = cat if isinstance(cat, str) else (
-                    cat.get("category", "") if isinstance(cat, dict) else ""
-                )
+                cat_name = cat if isinstance(cat, str) else (cat.get("category", "") if isinstance(cat, dict) else "")
                 if cat_name in _CATEGORY_ICONS:
-                    categories.append({
-                        "category": cat_name,
-                        **_CATEGORY_ICONS[cat_name],
-                    })
-            news_analysis.append({
-                "id": item.get("id", len(news_analysis)),
-                "categories": categories,
-                "impact_level": item.get("impact_level", "none"),
-                "affected_holdings": item.get("affected_holdings", []),
-                "reason": item.get("reason", ""),
-            })
+                    categories.append(
+                        {
+                            "category": cat_name,
+                            **_CATEGORY_ICONS[cat_name],
+                        }
+                    )
+            news_analysis.append(
+                {
+                    "id": item.get("id", len(news_analysis)),
+                    "categories": categories,
+                    "impact_level": item.get("impact_level", "none"),
+                    "affected_holdings": item.get("affected_holdings", []),
+                    "reason": item.get("reason", ""),
+                }
+            )
 
     # --- news_summary を正規化 ---
     raw_summary = parsed.get("news_summary")
@@ -1228,13 +1241,15 @@ def _parse_unified_response(raw_text: str, expected_news_count: int) -> dict | N
                 continue
             cat_name = pt.get("category", "")
             cat_info = _CATEGORY_ICONS.get(cat_name, {})
-            key_points.append({
-                "category": cat_name,
-                "icon": cat_info.get("icon", "📌"),
-                "label": cat_info.get("label", cat_name),
-                "summary": pt.get("summary", ""),
-                "news_ids": pt.get("news_ids", []),
-            })
+            key_points.append(
+                {
+                    "category": cat_name,
+                    "icon": cat_info.get("icon", "📌"),
+                    "label": cat_info.get("label", cat_name),
+                    "summary": pt.get("summary", ""),
+                    "news_ids": pt.get("news_ids", []),
+                }
+            )
         news_summary = {
             "overview": raw_summary.get("overview", ""),
             "key_points": key_points,
@@ -1250,12 +1265,14 @@ def _parse_unified_response(raw_text: str, expected_news_count: int) -> dict | N
         for sa in raw_assessments:
             if not isinstance(sa, dict):
                 continue
-            stock_assessments.append({
-                "symbol": sa.get("symbol", ""),
-                "name": sa.get("name", ""),
-                "assessment": sa.get("assessment", ""),
-                "action": sa.get("action", ""),
-            })
+            stock_assessments.append(
+                {
+                    "symbol": sa.get("symbol", ""),
+                    "name": sa.get("name", ""),
+                    "assessment": sa.get("assessment", ""),
+                    "action": sa.get("action", ""),
+                }
+            )
         health_summary = {
             "overview": raw_health.get("overview", ""),
             "stock_assessments": stock_assessments,
@@ -1326,6 +1343,7 @@ def apply_news_analysis(
         LLM 分析結果が適用されたニュースリスト（元リストのコピー）.
     """
     import copy
+
     result = copy.deepcopy(news_items)
     result_map = {r["id"]: r for r in analysis_results}
 
@@ -1351,9 +1369,7 @@ def apply_news_analysis(
     # 影響度でソート
     _impact_order = {"high": 0, "medium": 1, "low": 2, "none": 3}
     result.sort(
-        key=lambda x: _impact_order.get(
-            x["portfolio_impact"]["impact_level"], 9
-        ),
+        key=lambda x: _impact_order.get(x["portfolio_impact"]["impact_level"], 9),
     )
 
     return result

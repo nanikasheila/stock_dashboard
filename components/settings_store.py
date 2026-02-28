@@ -10,9 +10,7 @@ from pathlib import Path
 from typing import Any
 
 # 設定ファイルのデフォルトパス
-_DEFAULT_SETTINGS_PATH = (
-    Path(__file__).resolve().parents[1] / "data" / "dashboard_settings.json"
-)
+_DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parents[1] / "data" / "dashboard_settings.json"
 
 # 設定のデフォルト値
 DEFAULTS: dict[str, Any] = {
@@ -41,7 +39,7 @@ def load_settings(path: Path | None = None) -> dict[str, Any]:
     settings = dict(DEFAULTS)
     if p.exists():
         try:
-            with open(p, "r", encoding="utf-8") as f:
+            with open(p, encoding="utf-8") as f:
                 saved = json.load(f)
             if isinstance(saved, dict):
                 for key in DEFAULTS:

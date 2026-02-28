@@ -14,8 +14,6 @@ KIK-349 fixes:
 """
 
 import numpy as np
-from typing import Optional
-
 
 # Sectors where depreciation structurally inflates operating CF vs net income
 _SECTOR_CAP_ACCRUALS = {"Utilities", "Financial Services"}
@@ -25,7 +23,8 @@ _SECTOR_CAP_ACCRUALS = {"Utilities", "Financial Services"}
 # 1. Accruals (earnings quality) -- 25 pts
 # ---------------------------------------------------------------------------
 
-def compute_accruals_score(stock_detail: dict) -> tuple[float, Optional[float]]:
+
+def compute_accruals_score(stock_detail: dict) -> tuple[float, float | None]:
     """Accruals score.  Returns (score, raw_accruals).
 
     accruals = (net_income - operating_cf) / total_assets
@@ -67,7 +66,8 @@ def compute_accruals_score(stock_detail: dict) -> tuple[float, Optional[float]]:
 # 2. Revenue growth acceleration -- 25 pts
 # ---------------------------------------------------------------------------
 
-def compute_revenue_acceleration_score(stock_detail: dict) -> tuple[float, Optional[float]]:
+
+def compute_revenue_acceleration_score(stock_detail: dict) -> tuple[float, float | None]:
     """Revenue growth acceleration score.  Returns (score, raw_acceleration).
 
     Compares current-period revenue growth rate with the prior period's
@@ -115,7 +115,8 @@ def compute_revenue_acceleration_score(stock_detail: dict) -> tuple[float, Optio
 # 3. FCF yield -- 25 pts
 # ---------------------------------------------------------------------------
 
-def compute_fcf_yield_score(stock_detail: dict) -> tuple[float, Optional[float]]:
+
+def compute_fcf_yield_score(stock_detail: dict) -> tuple[float, float | None]:
     """FCF yield score.  Returns (score, raw_fcf_yield).
 
     fcf_yield = fcf / market_cap
@@ -152,7 +153,8 @@ def compute_fcf_yield_score(stock_detail: dict) -> tuple[float, Optional[float]]
 # 4. ROE improvement trend -- 25 pts
 # ---------------------------------------------------------------------------
 
-def compute_roe_trend_score(stock_detail: dict) -> tuple[float, Optional[float]]:
+
+def compute_roe_trend_score(stock_detail: dict) -> tuple[float, float | None]:
     """ROE improvement trend score.  Returns (score, raw_slope).
 
     Calculates ROE for three periods and fits a linear regression to
@@ -249,10 +251,7 @@ def compute_change_score(stock_detail: dict) -> dict:
     total = acc_score + rev_score + fcf_score + roe_score + penalty
     total = max(total, 0.0)  # Floor at 0
 
-    passed = sum(
-        1 for s in [acc_score, rev_score, fcf_score, roe_score]
-        if s >= _PASS_THRESHOLD
-    )
+    passed = sum(1 for s in [acc_score, rev_score, fcf_score, roe_score] if s >= _PASS_THRESHOLD)
 
     return {
         "change_score": total,
