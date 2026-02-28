@@ -38,11 +38,14 @@ def _find_python() -> str:
 def main():
     parser = argparse.ArgumentParser(description="Portfolio Dashboard Launcher")
     parser.add_argument(
-        "--port", type=int, default=8501,
+        "--port",
+        type=int,
+        default=8501,
         help="Streamlit サーバーのポート番号 (default: 8501)",
     )
     parser.add_argument(
-        "--no-browser", action="store_true",
+        "--no-browser",
+        action="store_true",
         help="ブラウザを自動で開かない",
     )
     args = parser.parse_args()
@@ -56,7 +59,10 @@ def main():
     url = f"http://localhost:{args.port}"
 
     cmd = [
-        python_exe, "-m", "streamlit", "run",
+        python_exe,
+        "-m",
+        "streamlit",
+        "run",
         str(app_path),
         f"--server.port={args.port}",
         "--server.headless=true",
@@ -65,7 +71,7 @@ def main():
 
     print(f"🚀 ダッシュボードを起動中... → {url}")
     print(f"   Python: {python_exe}")
-    print(f"   停止するには Ctrl+C を押してください")
+    print("   停止するには Ctrl+C を押してください")
     print()
 
     try:

@@ -76,12 +76,8 @@ def _parse_us_csv_unsettled() -> list[dict]:
             settle_cur = row[9].strip('"')
             settle_usd_str = row[16].strip('"').replace(",", "")
             settle_jpy_str = row[17].strip('"').replace(",", "")
-            settle_usd = (
-                float(settle_usd_str) if settle_usd_str not in ("-", "") else 0.0
-            )
-            settle_jpy = (
-                float(settle_jpy_str) if settle_jpy_str not in ("-", "") else 0.0
-            )
+            settle_usd = float(settle_usd_str) if settle_usd_str not in ("-", "") else 0.0
+            settle_jpy = float(settle_jpy_str) if settle_jpy_str not in ("-", "") else 0.0
 
             is_usd_settled = "ドル" in settle_cur
 
@@ -102,11 +98,7 @@ def _parse_us_csv_unsettled() -> list[dict]:
                     }
                 )
             # JPY-settled trades: check against JPY baseline (2026-02-19)
-            elif (
-                not is_usd_settled
-                and settle_jpy > 0
-                and settle_date > "2026-02-19"
-            ):
+            elif not is_usd_settled and settle_jpy > 0 and settle_date > "2026-02-19":
                 results.append(
                     {
                         "trade_date": trade_date,
@@ -133,7 +125,7 @@ def _process_json_only_trades() -> tuple[float, float, float]:
     for f_path in json_files:
         d = json.loads(f_path.read_text(encoding="utf-8"))
         saved = d.get("_saved_at", "")
-        memo = d.get("memo", "")
+        _memo = d.get("memo", "")
         trade_type = d.get("trade_type", "")
         symbol = d.get("symbol", "")
 
@@ -143,11 +135,7 @@ def _process_json_only_trades() -> tuple[float, float, float]:
         if saved <= BATCH_CUTOFF:
             # Batch import: only handle trades with missing settlement data
             # that are in the CSV but have settle_amount = "-"
-            if (
-                d["date"] >= "2026-02-19"
-                and d.get("settlement_jpy", 0) == 0
-                and d.get("settlement_usd", 0) == 0
-            ):
+            if d["date"] >= "2026-02-19" and d.get("settlement_jpy", 0) == 0 and d.get("settlement_usd", 0) == 0:
                 fallback = d["shares"] * d["price"]
                 delta = fallback if trade_type == "sell" else -fallback
                 batch_fallback_jpy += delta
@@ -180,10 +168,7 @@ def _process_json_only_trades() -> tuple[float, float, float]:
                     json_jpy += delta
                 elif currency == "USD":
                     json_usd += delta
-                print(
-                    f"  {d['date']} {trade_type} {symbol}"
-                    f" {currency} {delta:+,.0f} (fallback)"
-                )
+                print(f"  {d['date']} {trade_type} {symbol} {currency} {delta:+,.0f} (fallback)")
 
     return json_jpy, json_usd, batch_fallback_jpy
 
@@ -198,10 +183,7 @@ def main() -> None:
     for t in jp_unsettled:
         sign = "+" if t["side"] == "売付" else "-"
         amt = f"{t['settle_jpy']:,.0f}" if t["settle_jpy"] > 0 else "(missing)"
-        print(
-            f"  {t['trade_date']} {t['side']} {t['code']}"
-            f" settle={t['settle_date']} JPY {sign}{amt}"
-        )
+        print(f"  {t['trade_date']} {t['side']} {t['code']} settle={t['settle_date']} JPY {sign}{amt}")
 
     print()
     print("=== US CSV: trades settling AFTER baseline ===")

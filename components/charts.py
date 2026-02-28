@@ -10,10 +10,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-
 # =====================================================================
 # 総資産推移チャート
 # =====================================================================
+
 
 def build_total_chart(
     history_df: pd.DataFrame,
@@ -43,14 +43,16 @@ def build_total_chart(
     if chart_style == "積み上げ面":
         fig = go.Figure()
         for col in stock_cols:
-            fig.add_trace(go.Scatter(
-                x=history_df.index,
-                y=history_df[col],
-                mode="lines",
-                stackgroup="one",
-                name=col,
-                hovertemplate="%{x}<br>%{fullData.name}: ¥%{y:,.0f}<extra></extra>",
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=history_df.index,
+                    y=history_df[col],
+                    mode="lines",
+                    stackgroup="one",
+                    name=col,
+                    hovertemplate="%{x}<br>%{fullData.name}: ¥%{y:,.0f}<extra></extra>",
+                )
+            )
         fig.update_layout(
             title="保有銘柄別 評価額推移（積み上げ面グラフ）",
             xaxis_title="日付",
@@ -63,22 +65,26 @@ def build_total_chart(
 
     elif chart_style == "折れ線":
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=history_df.index,
-            y=history_df["total"],
-            mode="lines",
-            name="合計",
-            line=dict(width=3, color="#fbbf24"),
-            hovertemplate="合計: ¥%{y:,.0f}<extra></extra>",
-        ))
-        for col in stock_cols:
-            fig.add_trace(go.Scatter(
+        fig.add_trace(
+            go.Scatter(
                 x=history_df.index,
-                y=history_df[col],
+                y=history_df["total"],
                 mode="lines",
-                name=col,
-                hovertemplate="%{fullData.name}: ¥%{y:,.0f}<extra></extra>",
-            ))
+                name="合計",
+                line=dict(width=3, color="#fbbf24"),
+                hovertemplate="合計: ¥%{y:,.0f}<extra></extra>",
+            )
+        )
+        for col in stock_cols:
+            fig.add_trace(
+                go.Scatter(
+                    x=history_df.index,
+                    y=history_df[col],
+                    mode="lines",
+                    name=col,
+                    hovertemplate="%{fullData.name}: ¥%{y:,.0f}<extra></extra>",
+                )
+            )
         fig.update_layout(
             title="保有銘柄別 評価額推移（折れ線グラフ）",
             xaxis_title="日付",
@@ -93,12 +99,14 @@ def build_total_chart(
         weekly = history_df[stock_cols].resample("W").last().ffill()
         fig = go.Figure()
         for col in stock_cols:
-            fig.add_trace(go.Bar(
-                x=weekly.index,
-                y=weekly[col],
-                name=col,
-                hovertemplate="%{fullData.name}: ¥%{y:,.0f}<extra></extra>",
-            ))
+            fig.add_trace(
+                go.Bar(
+                    x=weekly.index,
+                    y=weekly[col],
+                    name=col,
+                    hovertemplate="%{fullData.name}: ¥%{y:,.0f}<extra></extra>",
+                )
+            )
         fig.update_layout(
             barmode="stack",
             title="保有銘柄別 評価額推移（積み上げ棒グラフ・週次）",
@@ -112,14 +120,16 @@ def build_total_chart(
 
     # ベンチマーク重ね描き
     if benchmark_series is not None:
-        fig.add_trace(go.Scatter(
-            x=benchmark_series.index,
-            y=benchmark_series.values,
-            mode="lines",
-            name=f"BM: {benchmark_label}",
-            line=dict(width=2, color="#94a3b8", dash="dash"),
-            hovertemplate=f"{benchmark_label}: ¥%{{y:,.0f}}<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=benchmark_series.index,
+                y=benchmark_series.values,
+                mode="lines",
+                name=f"BM: {benchmark_label}",
+                line=dict(width=2, color="#94a3b8", dash="dash"),
+                hovertemplate=f"{benchmark_label}: ¥%{{y:,.0f}}<extra></extra>",
+            )
+        )
 
     return fig
 
@@ -128,27 +138,32 @@ def build_total_chart(
 # 投資額 vs 評価額チャート
 # =====================================================================
 
+
 def build_invested_chart(history_df: pd.DataFrame) -> go.Figure:
     """投資額 vs 評価額チャートを構築して返す."""
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=history_df.index,
-        y=history_df["total"],
-        mode="lines",
-        name="評価額",
-        line=dict(width=2, color="#60a5fa"),
-        fill="tozeroy",
-        fillcolor="rgba(96,165,250,0.15)",
-        hovertemplate="評価額: ¥%{y:,.0f}<extra></extra>",
-    ))
-    fig.add_trace(go.Scatter(
-        x=history_df.index,
-        y=history_df["invested"],
-        mode="lines",
-        name="累積投資額",
-        line=dict(width=2, color="#f59e0b", dash="dot"),
-        hovertemplate="投資額: ¥%{y:,.0f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=history_df.index,
+            y=history_df["total"],
+            mode="lines",
+            name="評価額",
+            line=dict(width=2, color="#60a5fa"),
+            fill="tozeroy",
+            fillcolor="rgba(96,165,250,0.15)",
+            hovertemplate="評価額: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=history_df.index,
+            y=history_df["invested"],
+            mode="lines",
+            name="累積投資額",
+            line=dict(width=2, color="#f59e0b", dash="dot"),
+            hovertemplate="投資額: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
     fig.update_layout(
         xaxis_title="日付",
         yaxis_title="金額（円）",
@@ -164,6 +179,7 @@ def build_invested_chart(history_df: pd.DataFrame) -> go.Figure:
 # プロジェクションチャート
 # =====================================================================
 
+
 def build_projection_chart(
     history_df: pd.DataFrame,
     projection_df: pd.DataFrame,
@@ -173,70 +189,82 @@ def build_projection_chart(
     fig = go.Figure()
 
     # 過去の実績
-    fig.add_trace(go.Scatter(
-        x=history_df.index,
-        y=history_df["total"],
-        mode="lines",
-        name="実績（総資産）",
-        line=dict(width=2.5, color="#60a5fa"),
-        hovertemplate="実績: ¥%{y:,.0f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=history_df.index,
+            y=history_df["total"],
+            mode="lines",
+            name="実績（総資産）",
+            line=dict(width=2.5, color="#60a5fa"),
+            hovertemplate="実績: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
 
     # 投資額
     if "invested" in history_df.columns:
-        fig.add_trace(go.Scatter(
-            x=history_df.index,
-            y=history_df["invested"],
-            mode="lines",
-            name="累積投資額",
-            line=dict(width=1.5, color="#f59e0b", dash="dot"),
-            hovertemplate="投資額: ¥%{y:,.0f}<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=history_df.index,
+                y=history_df["invested"],
+                mode="lines",
+                name="累積投資額",
+                line=dict(width=1.5, color="#f59e0b", dash="dot"),
+                hovertemplate="投資額: ¥%{y:,.0f}<extra></extra>",
+            )
+        )
 
     # 楽観シナリオ
-    fig.add_trace(go.Scatter(
-        x=projection_df.index,
-        y=projection_df["optimistic"],
-        mode="lines",
-        name="楽観",
-        line=dict(width=1.5, color="#4ade80", dash="dash"),
-        hovertemplate="楽観: ¥%{y:,.0f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=projection_df.index,
+            y=projection_df["optimistic"],
+            mode="lines",
+            name="楽観",
+            line=dict(width=1.5, color="#4ade80", dash="dash"),
+            hovertemplate="楽観: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
 
     # 悲観シナリオ（fill between 用に先に追加）
-    fig.add_trace(go.Scatter(
-        x=projection_df.index,
-        y=projection_df["pessimistic"],
-        mode="lines",
-        name="悲観",
-        line=dict(width=1.5, color="#f87171", dash="dash"),
-        fill="tonexty",
-        fillcolor="rgba(148, 163, 184, 0.1)",
-        hovertemplate="悲観: ¥%{y:,.0f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=projection_df.index,
+            y=projection_df["pessimistic"],
+            mode="lines",
+            name="悲観",
+            line=dict(width=1.5, color="#f87171", dash="dash"),
+            fill="tonexty",
+            fillcolor="rgba(148, 163, 184, 0.1)",
+            hovertemplate="悲観: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
 
     # ベースシナリオ
-    fig.add_trace(go.Scatter(
-        x=projection_df.index,
-        y=projection_df["base"],
-        mode="lines",
-        name="ベース",
-        line=dict(width=2, color="#a78bfa"),
-        hovertemplate="ベース: ¥%{y:,.0f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=projection_df.index,
+            y=projection_df["base"],
+            mode="lines",
+            name="ベース",
+            line=dict(width=2, color="#a78bfa"),
+            hovertemplate="ベース: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
 
     # 目標資産ライン
     if target_amount > 0:
         x_all_start = history_df.index[0]
         x_all_end = projection_df.index[-1]
-        fig.add_trace(go.Scatter(
-            x=[x_all_start, x_all_end],
-            y=[target_amount, target_amount],
-            mode="lines",
-            name=f"目標: ¥{target_amount:,.0f}",
-            line=dict(width=2, color="#fbbf24", dash="dashdot"),
-            hovertemplate="目標: ¥%{y:,.0f}<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=[x_all_start, x_all_end],
+                y=[target_amount, target_amount],
+                mode="lines",
+                name=f"目標: ¥{target_amount:,.0f}",
+                line=dict(width=2, color="#fbbf24", dash="dashdot"),
+                hovertemplate="目標: ¥%{y:,.0f}<extra></extra>",
+            )
+        )
 
         # 目標到達予想時期
         reach_date = None
@@ -272,6 +300,7 @@ def build_projection_chart(
 # セクター構成パイチャート
 # =====================================================================
 
+
 def build_sector_chart(sector_df: pd.DataFrame) -> go.Figure:
     """セクター構成ドーナツチャートを構築して返す."""
     fig = px.pie(
@@ -294,6 +323,7 @@ def build_sector_chart(sector_df: pd.DataFrame) -> go.Figure:
 # 通貨別配分パイチャート
 # =====================================================================
 
+
 def build_currency_chart(positions: list[dict]) -> go.Figure | None:
     """通貨別エクスポージャーのドーナツチャートを構築して返す."""
     currency_data: dict[str, float] = {}
@@ -303,10 +333,7 @@ def build_currency_chart(positions: list[dict]) -> go.Figure | None:
     if not currency_data:
         return None
 
-    cur_df = pd.DataFrame([
-        {"currency": k, "evaluation_jpy": v}
-        for k, v in currency_data.items()
-    ])
+    cur_df = pd.DataFrame([{"currency": k, "evaluation_jpy": v} for k, v in currency_data.items()])
     _cur_colors = {"JPY": "#60a5fa", "USD": "#4ade80", "SGD": "#fbbf24", "HKD": "#f87171"}
     fig = px.pie(
         cur_df,
@@ -329,21 +356,24 @@ def build_currency_chart(positions: list[dict]) -> go.Figure | None:
 # 銘柄別個別チャート
 # =====================================================================
 
+
 def build_individual_chart(
     history_df: pd.DataFrame,
     symbol: str,
 ) -> go.Figure:
     """個別銘柄の評価額推移チャートを構築して返す."""
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=history_df.index,
-        y=history_df[symbol],
-        mode="lines",
-        fill="tozeroy",
-        name=symbol,
-        line=dict(width=2),
-        hovertemplate="¥%{y:,.0f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=history_df.index,
+            y=history_df[symbol],
+            mode="lines",
+            fill="tozeroy",
+            name=symbol,
+            line=dict(width=2),
+            hovertemplate="¥%{y:,.0f}<extra></extra>",
+        )
+    )
     fig.update_layout(
         title=symbol,
         height=250,
@@ -358,28 +388,30 @@ def build_individual_chart(
 # 月次サマリーチャート
 # =====================================================================
 
+
 def build_monthly_chart(monthly_df: pd.DataFrame) -> go.Figure:
     """月次サマリーの棒グラフを構築して返す."""
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=monthly_df.index,
-        y=monthly_df["month_end_value_jpy"],
-        name="月末評価額",
-        marker_color=[
-            "#4ade80" if v >= 0 else "#f87171"
-            for v in monthly_df["change_pct"].fillna(0)
-        ],
-        hovertemplate="月末資産: ¥%{y:,.0f}<extra></extra>",
-    ))
-    if "invested_jpy" in monthly_df.columns:
-        fig.add_trace(go.Scatter(
+    fig.add_trace(
+        go.Bar(
             x=monthly_df.index,
-            y=monthly_df["invested_jpy"],
-            name="累積投資額",
-            mode="lines",
-            line=dict(width=2, color="#f59e0b", dash="dot"),
-            hovertemplate="投資額: ¥%{y:,.0f}<extra></extra>",
-        ))
+            y=monthly_df["month_end_value_jpy"],
+            name="月末評価額",
+            marker_color=["#4ade80" if v >= 0 else "#f87171" for v in monthly_df["change_pct"].fillna(0)],
+            hovertemplate="月末資産: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
+    if "invested_jpy" in monthly_df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=monthly_df.index,
+                y=monthly_df["invested_jpy"],
+                name="累積投資額",
+                mode="lines",
+                line=dict(width=2, color="#f59e0b", dash="dot"),
+                hovertemplate="投資額: ¥%{y:,.0f}<extra></extra>",
+            )
+        )
     fig.update_layout(
         title="月末資産額の推移",
         xaxis_title="月",
@@ -395,31 +427,38 @@ def build_monthly_chart(monthly_df: pd.DataFrame) -> go.Figure:
 # 売買フローチャート
 # =====================================================================
 
+
 def build_trade_flow_chart(trade_act_df: pd.DataFrame) -> go.Figure:
     """月次売買フローチャートを構築して返す."""
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=trade_act_df.index,
-        y=trade_act_df["buy_amount"],
-        name="購入額",
-        marker_color="#60a5fa",
-        hovertemplate="購入: ¥%{y:,.0f}<extra></extra>",
-    ))
-    fig.add_trace(go.Bar(
-        x=trade_act_df.index,
-        y=-trade_act_df["sell_amount"],
-        name="売却額",
-        marker_color="#f87171",
-        hovertemplate="売却: ¥%{y:,.0f}<extra></extra>",
-    ))
-    fig.add_trace(go.Scatter(
-        x=trade_act_df.index,
-        y=trade_act_df["net_flow"],
-        name="ネットフロー",
-        mode="lines+markers",
-        line=dict(color="#fbbf24", width=2),
-        hovertemplate="ネット: ¥%{y:,.0f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=trade_act_df.index,
+            y=trade_act_df["buy_amount"],
+            name="購入額",
+            marker_color="#60a5fa",
+            hovertemplate="購入: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=trade_act_df.index,
+            y=-trade_act_df["sell_amount"],
+            name="売却額",
+            marker_color="#f87171",
+            hovertemplate="売却: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=trade_act_df.index,
+            y=trade_act_df["net_flow"],
+            name="ネットフロー",
+            mode="lines+markers",
+            line=dict(color="#fbbf24", width=2),
+            hovertemplate="ネット: ¥%{y:,.0f}<extra></extra>",
+        )
+    )
     fig.update_layout(
         title="月次売買フロー",
         xaxis_title="月",
@@ -436,7 +475,8 @@ def build_trade_flow_chart(trade_act_df: pd.DataFrame) -> go.Figure:
 # ドローダウンチャート
 # =====================================================================
 
-def build_drawdown_chart(drawdown_series: "pd.Series") -> go.Figure:
+
+def build_drawdown_chart(drawdown_series: pd.Series) -> go.Figure:
     """ドローダウン（水面下）チャートを構築して返す.
 
     Parameters
@@ -449,16 +489,18 @@ def build_drawdown_chart(drawdown_series: "pd.Series") -> go.Figure:
     go.Figure
     """
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=drawdown_series.index,
-        y=drawdown_series.values,
-        mode="lines",
-        fill="tozeroy",
-        name="ドローダウン",
-        line=dict(color="#f87171", width=1.5),
-        fillcolor="rgba(248,113,113,0.2)",
-        hovertemplate="%{x}<br>DD: %{y:.1f}%<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=drawdown_series.index,
+            y=drawdown_series.values,
+            mode="lines",
+            fill="tozeroy",
+            name="ドローダウン",
+            line=dict(color="#f87171", width=1.5),
+            fillcolor="rgba(248,113,113,0.2)",
+            hovertemplate="%{x}<br>DD: %{y:.1f}%<extra></extra>",
+        )
+    )
     fig.update_layout(
         title="ドローダウン（ピークからの下落率）",
         xaxis_title="日付",
@@ -474,8 +516,9 @@ def build_drawdown_chart(drawdown_series: "pd.Series") -> go.Figure:
 # ローリングSharpe比チャート
 # =====================================================================
 
+
 def build_rolling_sharpe_chart(
-    rolling_sharpe: "pd.Series",
+    rolling_sharpe: pd.Series,
     window: int = 60,
 ) -> go.Figure:
     """ローリングSharpe比のチャートを構築して返す.
@@ -492,17 +535,20 @@ def build_rolling_sharpe_chart(
     go.Figure
     """
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=rolling_sharpe.index,
-        y=rolling_sharpe.values,
-        mode="lines",
-        name=f"Sharpe ({window}日)",
-        line=dict(color="#a78bfa", width=2),
-        hovertemplate="%{x}<br>Sharpe: %{y:.2f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=rolling_sharpe.index,
+            y=rolling_sharpe.values,
+            mode="lines",
+            name=f"Sharpe ({window}日)",
+            line=dict(color="#a78bfa", width=2),
+            hovertemplate="%{x}<br>Sharpe: %{y:.2f}<extra></extra>",
+        )
+    )
     # 基準ライン
-    fig.add_hline(y=1.0, line_dash="dash", line_color="#4ade80",
-                  annotation_text="1.0（良好）", annotation_position="bottom right")
+    fig.add_hline(
+        y=1.0, line_dash="dash", line_color="#4ade80", annotation_text="1.0（良好）", annotation_position="bottom right"
+    )
     fig.add_hline(y=0.0, line_dash="dot", line_color="rgba(148,163,184,0.5)")
     fig.update_layout(
         title=f"ローリングSharpe比（{window}日）",
@@ -517,6 +563,7 @@ def build_rolling_sharpe_chart(
 # =====================================================================
 # 構成比ツリーマップ
 # =====================================================================
+
 
 def build_treemap_chart(positions: list[dict]) -> go.Figure | None:
     """保有銘柄のセクター×銘柄ツリーマップを構築して返す.
@@ -563,25 +610,23 @@ def build_treemap_chart(positions: list[dict]) -> go.Figure | None:
             values.append(max(s["evaluation_jpy"], 0))
             colors.append(s.get("pnl_pct", 0))
 
-    fig = go.Figure(go.Treemap(
-        labels=labels,
-        parents=parents,
-        values=values,
-        marker=dict(
-            colors=colors,
-            colorscale="RdYlGn",
-            cmid=0,
-            showscale=True,
-            colorbar=dict(title="損益率%", ticksuffix="%"),
-        ),
-        texttemplate="<b>%{label}</b><br>¥%{value:,.0f}",
-        hovertemplate=(
-            "<b>%{label}</b><br>"
-            "評価額: ¥%{value:,.0f}<br>"
-            "損益率: %{color:+.1f}%<extra></extra>"
-        ),
-        branchvalues="total",
-    ))
+    fig = go.Figure(
+        go.Treemap(
+            labels=labels,
+            parents=parents,
+            values=values,
+            marker=dict(
+                colors=colors,
+                colorscale="RdYlGn",
+                cmid=0,
+                showscale=True,
+                colorbar=dict(title="損益率%", ticksuffix="%"),
+            ),
+            texttemplate="<b>%{label}</b><br>¥%{value:,.0f}",
+            hovertemplate=("<b>%{label}</b><br>評価額: ¥%{value:,.0f}<br>損益率: %{color:+.1f}%<extra></extra>"),
+            branchvalues="total",
+        )
+    )
     fig.update_layout(
         title="構成比ツリーマップ（セクター × 銘柄）",
         height=450,
@@ -593,6 +638,7 @@ def build_treemap_chart(positions: list[dict]) -> go.Figure | None:
 # =====================================================================
 # 銘柄間相関ヒートマップ
 # =====================================================================
+
 
 def build_correlation_chart(corr_matrix: pd.DataFrame) -> go.Figure | None:
     """銘柄間の日次リターン相関ヒートマップを構築して返す.
@@ -613,22 +659,21 @@ def build_correlation_chart(corr_matrix: pd.DataFrame) -> go.Figure | None:
     # 小数点2桁の注釈テキスト
     text_vals = [[f"{v:.2f}" for v in row] for row in corr_matrix.values]
 
-    fig = go.Figure(go.Heatmap(
-        z=corr_matrix.values,
-        x=corr_matrix.columns.tolist(),
-        y=corr_matrix.index.tolist(),
-        text=text_vals,
-        texttemplate="%{text}",
-        colorscale="RdBu_r",
-        zmid=0,
-        zmin=-1,
-        zmax=1,
-        colorbar=dict(title="相関"),
-        hovertemplate=(
-            "%{x} × %{y}<br>"
-            "相関: %{z:.3f}<extra></extra>"
-        ),
-    ))
+    fig = go.Figure(
+        go.Heatmap(
+            z=corr_matrix.values,
+            x=corr_matrix.columns.tolist(),
+            y=corr_matrix.index.tolist(),
+            text=text_vals,
+            texttemplate="%{text}",
+            colorscale="RdBu_r",
+            zmid=0,
+            zmin=-1,
+            zmax=1,
+            colorbar=dict(title="相関"),
+            hovertemplate=("%{x} × %{y}<br>相関: %{z:.3f}<extra></extra>"),
+        )
+    )
     fig.update_layout(
         title="銘柄間 日次リターン相関",
         height=max(350, len(corr_matrix) * 40 + 100),

@@ -6,7 +6,6 @@ a single source of truth for suffix-based lookups.
 
 from src.core.common import is_cash
 
-
 # Comprehensive suffix -> region mapping (from portfolio_manager.py)
 SUFFIX_TO_REGION = {
     ".T": "Japan",
