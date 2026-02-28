@@ -11,7 +11,9 @@ if _SCRIPTS_DIR not in sys.path:
 from components.copilot_client import (
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
+    ChatCallResult,
     call,
+    call_with_session,
     clear_execution_logs,
     get_execution_logs,
     is_available,
@@ -189,3 +191,72 @@ class TestExecutionLogs:
             call("test")
         logs = get_execution_logs()
         assert logs[0].duration_sec >= 0
+
+
+# ---------------------------------------------------------------------------
+# call() — new parameters (session_id, allow_urls, allow_tools)
+# ---------------------------------------------------------------------------
+class TestCallNewParameters:
+    def test_call_with_session_id(self):
+        """--resume <id> is appended to command when session_id is given."""
+        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
+        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
+            call("prompt", session_id="test-session-123")
+        cmd = mock_run.call_args[0][0]
+        assert "--resume" in cmd
+        assert cmd[cmd.index("--resume") + 1] == "test-session-123"
+
+    def test_call_with_allow_urls(self):
+        """--allow-all-urls is appended when allow_urls=True."""
+        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
+        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
+            call("prompt", allow_urls=True)
+        cmd = mock_run.call_args[0][0]
+        assert "--allow-all-urls" in cmd
+
+    def test_call_with_allow_tools(self):
+        """--allow-all-tools is appended when allow_tools=True."""
+        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
+        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
+            call("prompt", allow_tools=True)
+        cmd = mock_run.call_args[0][0]
+        assert "--allow-all-tools" in cmd
+
+    def test_call_backward_compatible(self):
+        """No new flags appear when all new parameters are at their defaults."""
+        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
+        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
+            call("prompt")
+        cmd = mock_run.call_args[0][0]
+        assert "--resume" not in cmd
+        assert "--allow-all-urls" not in cmd
+        assert "--allow-all-tools" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# call_with_session() and ChatCallResult
+# ---------------------------------------------------------------------------
+class TestCallWithSession:
+    def test_chat_call_result_dataclass(self):
+        """ChatCallResult stores response and session_id."""
+        result = ChatCallResult(response="hello", session_id="abc-123")
+        assert result.response == "hello"
+        assert result.session_id == "abc-123"
+
+    def test_call_with_session_creates_new_id(self):
+        """When session_id is None, a new UUID is generated and returned."""
+        mock_result = MagicMock(returncode=0, stdout="answer", stderr="")
+        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+            result = call_with_session("prompt", session_id=None)
+        assert result.session_id is not None
+        # Must be a valid UUID4 string (32 hex chars + 4 hyphens = 36)
+        assert len(result.session_id) == 36
+        assert result.response == "answer"
+
+    def test_call_with_session_preserves_id(self):
+        """When session_id is provided, the same ID is echoed in the result."""
+        mock_result = MagicMock(returncode=0, stdout="answer", stderr="")
+        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+            result = call_with_session("prompt", session_id="existing-session-id")
+        assert result.session_id == "existing-session-id"
+        assert result.response == "answer"

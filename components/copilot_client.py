@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -168,26 +169,43 @@ def call(
     model: str | None = None,
     timeout: int = 60,
     source: str = "",
+    session_id: str | None = None,
+    allow_urls: bool = False,
+    allow_tools: bool = False,
 ) -> str | None:
-    """Copilot CLI を呼び出してテキスト応答を返す.
+    """Invoke Copilot CLI and return the text response.
+
+    Why: Multiple callers (llm_analyzer, dashboard chat) need a single
+         thin CLI execution layer with optional session-continuation and
+         tool-access flags.
+    How: Build the base command, then conditionally append --resume,
+         --allow-all-urls, and --allow-all-tools before subprocess.run.
+         All new parameters default to off so existing callers are
+         unaffected (backward compatible).
 
     Parameters
     ----------
     prompt : str
-        LLM に送るプロンプト文字列。
+        Prompt string sent to the LLM.
     model : str | None
-        モデル ID (``copilot --model`` の値)。省略時は ``DEFAULT_MODEL``。
+        Model ID (``copilot --model``). Falls back to ``DEFAULT_MODEL``.
     timeout : int
-        CLI 実行のタイムアウト秒数。
+        Subprocess timeout in seconds.
     source : str
-        呼び出し元の識別子。ログに記録する。
-        例: ``"news_analysis"``, ``"stock_analysis"``
+        Caller identifier recorded in execution logs.
+        e.g. ``"news_analysis"``, ``"stock_analysis"``
+    session_id : str | None
+        When provided, passes ``--resume <session_id>`` so the CLI
+        continues an existing conversation context.
+    allow_urls : bool
+        When True, appends ``--allow-all-urls`` to let Copilot fetch URLs.
+    allow_tools : bool
+        When True, appends ``--allow-all-tools`` to grant full tool access.
 
     Returns
     -------
     str | None
-        CLI の標準出力テキスト。
-        CLI が利用不可 / 失敗した場合は ``None``。
+        stdout text from CLI, or ``None`` on any failure.
     """
     mdl = model or DEFAULT_MODEL
 
@@ -199,6 +217,13 @@ def call(
         "--model",
         mdl,
     ]
+
+    if session_id is not None:
+        cmd.extend(["--resume", session_id])
+    if allow_urls:
+        cmd.append("--allow-all-urls")
+    if allow_tools:
+        cmd.append("--allow-all-tools")
 
     t0 = time.time()
     try:
@@ -289,3 +314,86 @@ def call(
             source=source,
         )
         return None
+
+
+# =====================================================================
+# Chat-oriented call with session tracking
+# =====================================================================
+
+
+@dataclass
+class ChatCallResult:
+    """Result of a chat-oriented CLI call that carries session context.
+
+    Why: The dashboard chat needs to propagate a session_id across turns
+         so the CLI can maintain conversation context via --resume.
+         Returning both fields together avoids a separate session-lookup.
+    """
+
+    response: str | None
+    session_id: str | None
+
+
+def call_with_session(
+    prompt: str,
+    *,
+    model: str | None = None,
+    timeout: int = 120,
+    source: str = "dashboard_chat",
+    session_id: str | None = None,
+    allow_urls: bool = True,
+    allow_tools: bool = True,
+) -> ChatCallResult:
+    """Call Copilot CLI with session continuation and return result + session_id.
+
+    Why: The multi-turn dashboard chat requires a stable session identifier
+         so the CLI can recall earlier context without re-sending the full
+         history every turn (reduces token cost and latency).
+    How: If no session_id is provided, a new UUID4 is generated and passed
+         as --resume so the CLI anchors a new session to that ID.  The
+         generated or provided session_id is always echoed back in the
+         returned ChatCallResult, letting the caller persist it in
+         st.session_state for subsequent turns.
+
+    Parameters
+    ----------
+    prompt : str
+        Prompt string sent to the LLM.
+    model : str | None
+        Model ID. Falls back to ``DEFAULT_MODEL``.
+    timeout : int
+        Subprocess timeout in seconds.
+    source : str
+        Caller identifier recorded in execution logs.
+    session_id : str | None
+        Existing session ID to resume.  When None, a new UUID is created.
+    allow_urls : bool
+        Passed through to ``call()``; defaults True for chat use-case.
+    allow_tools : bool
+        Passed through to ``call()``; defaults True for chat use-case.
+
+    Returns
+    -------
+    ChatCallResult
+        ``.response`` is the CLI output (or None on failure).
+        ``.session_id`` is the session ID that was used (new or provided).
+    """
+    effective_session_id = session_id if session_id is not None else str(uuid.uuid4())
+
+    logger.info(
+        "[copilot_client] call_with_session source=%s session_id=%s",
+        source,
+        effective_session_id,
+    )
+
+    response = call(
+        prompt,
+        model=model,
+        timeout=timeout,
+        source=source,
+        session_id=effective_session_id,
+        allow_urls=allow_urls,
+        allow_tools=allow_tools,
+    )
+
+    return ChatCallResult(response=response, session_id=effective_session_id)
