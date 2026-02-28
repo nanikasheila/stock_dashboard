@@ -4,12 +4,31 @@
  *      (KPI cards, news cards, health alerts, etc.).
  * How: CSS custom classes using Streamlit's CSS variables for theme
  *      compatibility (dark/light). Follows Tailwind color palette.
+ *      Theme colors defined as custom properties for maintainability.
  */
+
+/* =====================================================================
+ * Theme color variables
+ * Why: Hardcoded colors scattered across CSS/HTML reduce maintainability
+ *      and make theme switching difficult.
+ * How: Define semantic color variables once, reference everywhere.
+ * ===================================================================== */
+:root {
+    --color-positive: #4ade80;
+    --color-negative: #f87171;
+    --color-warning: #fbbf24;
+    --color-caution: #fb923c;
+    --color-info: #60a5fa;
+    --color-primary: #6366f1;
+    --color-primary-light: #a5b4fc;
+    --color-muted: #94a3b8;
+    --color-muted-bg: rgba(148,163,184,0.2);
+}
 
 /* Smooth scroll for TOC anchor navigation */
 html { scroll-behavior: smooth; }
-.positive { color: #4ade80; }
-.negative { color: #f87171; }
+.positive { color: var(--color-positive); }
+.negative { color: var(--color-negative); }
 
 /* TOC link styling */
 .toc-link {
@@ -416,4 +435,94 @@ html { scroll-behavior: smooth; }
     font-size: 0.875rem;
     opacity: 0.75;
     padding: 8px 0;
+}
+
+/* =====================================================================
+ * Tab styling
+ * Why: Default Streamlit tabs lack visual emphasis for the active tab
+ * How: Enhance active tab indicator and add subtle hover effects
+ * ===================================================================== */
+div[data-testid="stTabs"] button[data-baseweb="tab"] {
+    font-weight: 500;
+    padding: 10px 16px;
+    transition: background 0.2s, color 0.2s;
+}
+div[data-testid="stTabs"] button[data-baseweb="tab"]:hover {
+    background: rgba(99,102,241,0.08);
+}
+div[data-testid="stTabs"] button[aria-selected="true"] {
+    font-weight: 700;
+}
+
+/* =====================================================================
+ * Responsive design
+ * Why: KPI cards and layout break on narrow screens (mobile/tablet)
+ * How: Media queries with progressive scaling and single-column fallback
+ * ===================================================================== */
+@media (max-width: 768px) {
+    .kpi-value {
+        font-size: clamp(1.4rem, 4vw, 2.2rem);
+    }
+    .kpi-main {
+        padding: 18px 14px 16px;
+    }
+    .kpi-main .kpi-label {
+        font-size: 0.82rem;
+    }
+    .kpi-value-sub {
+        font-size: 1.05rem;
+    }
+    .kpi-value-risk {
+        font-size: 0.92rem;
+    }
+    .kpi-risk {
+        padding: 8px 4px;
+    }
+    .sell-alert {
+        padding: 10px 12px;
+    }
+    .sell-alert-header {
+        font-size: 0.88rem;
+    }
+    .news-card {
+        padding: 10px 12px;
+    }
+    .news-title {
+        font-size: 0.85rem;
+    }
+    .health-summary-card,
+    .news-summary-card {
+        padding: 14px 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .kpi-value {
+        font-size: 1.3rem;
+    }
+    .kpi-main {
+        padding: 14px 10px 12px;
+    }
+    .kpi-value-sub {
+        font-size: 0.95rem;
+    }
+    .kpi-label {
+        font-size: 0.78rem;
+    }
+}
+
+/* =====================================================================
+ * High contrast mode support
+ * Why: Color-only indicators are inaccessible to colorblind users
+ * How: Use forced-colors media query to ensure borders remain visible
+ * ===================================================================== */
+@media (forced-colors: active) {
+    .sell-alert,
+    .health-card,
+    .news-card {
+        border: 2px solid;
+    }
+    .kpi-card {
+        border: 1px solid;
+    }
 }
