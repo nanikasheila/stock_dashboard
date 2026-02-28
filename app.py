@@ -133,9 +133,9 @@ st.markdown("""
         min-width: 0;
     }
     .kpi-label {
-        font-size: 0.8rem;
+        font-size: 0.85rem;
         font-weight: 500;
-        opacity: 0.65;
+        opacity: 0.78;
         letter-spacing: 0.02em;
         margin-bottom: 5px;
     }
@@ -193,12 +193,12 @@ st.markdown("""
     }
     .sell-alert-reason {
         font-size: 0.88rem;
-        opacity: 0.85;
+        opacity: 0.9;
         margin-bottom: 4px;
     }
     .sell-alert-detail {
-        font-size: 0.82rem;
-        opacity: 0.7;
+        font-size: 0.85rem;
+        opacity: 0.8;
         padding-left: 12px;
     }
     .sell-alert-ai {
@@ -253,8 +253,8 @@ st.markdown("""
         opacity: 0.9;
     }
     .news-meta {
-        font-size: 0.78rem;
-        opacity: 0.6;
+        font-size: 0.82rem;
+        opacity: 0.75;
         margin-bottom: 6px;
     }
     .news-badge {
@@ -283,8 +283,8 @@ st.markdown("""
         color: #93c5fd;
     }
     .news-affected {
-        font-size: 0.8rem;
-        opacity: 0.75;
+        font-size: 0.85rem;
+        opacity: 0.82;
         margin-top: 4px;
         padding-left: 4px;
     }
@@ -292,7 +292,7 @@ st.markdown("""
         display: inline-block;
         background: rgba(148,163,184,0.2);
         color: #94a3b8;
-        font-size: 0.68rem;
+        font-size: 0.75rem;
         font-weight: 700;
         border-radius: 4px;
         padding: 1px 5px;
@@ -1019,7 +1019,7 @@ if _fx_display:
 # =====================================================================
 # KPI メトリクスカード
 # =====================================================================
-st.markdown('<div id="summary"></div>', unsafe_allow_html=True)
+st.markdown('<div id="summary" role="region" aria-label="サマリー"></div>', unsafe_allow_html=True)
 st.markdown("### 📈 サマリー")
 _summary_as_of = snapshot.get("as_of", "")[:16].replace("T", " ") or "—"
 st.caption(f"ポートフォリオ全体の現在価値・損益・リスク指標を一目で把握するセクションです。｜ 🕐 データ取得: {_summary_as_of}")
@@ -1052,7 +1052,7 @@ def _kpi_main(label: str, value: str, sub: str = "", color: str = "") -> str:
         if sub else ""
     )
     return (
-        f'<div class="kpi-card kpi-main">'
+        f'<div class="kpi-card kpi-main" role="group" aria-label="{label}">'
         f'<div class="kpi-label">{label}</div>'
         f'<div class="kpi-value" style="{color_style}">{value}</div>'
         f'{sub_html}'
@@ -1064,7 +1064,7 @@ def _kpi_sub(label: str, value: str, color: str = "") -> str:
     """小項目 KPI: テーマ追従 + コンパクト."""
     color_style = f"color:{color};" if color else ""
     return (
-        f'<div class="kpi-card kpi-sub">'
+        f'<div class="kpi-card kpi-sub" role="group" aria-label="{label}">'
         f'<div class="kpi-label">{label}</div>'
         f'<div class="kpi-value-sub" style="{color_style}">{value}</div>'
         f'</div>'
@@ -1075,7 +1075,7 @@ def _risk_card(label: str, value: str, color: str = "") -> str:
     """リスク指標: テーマ追従 + 最小サイズ."""
     color_style = f"color:{color};" if color else ""
     return (
-        f'<div class="kpi-card kpi-risk">'
+        f'<div class="kpi-card kpi-risk" role="group" aria-label="{label}">'
         f'<div class="kpi-label" style="white-space:nowrap;'
         f' overflow:hidden; text-overflow:ellipsis;">{label}</div>'
         f'<div class="kpi-value-risk" style="{color_style}">{value}</div>'
@@ -1238,7 +1238,7 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 # ヘルスチェック & 売りアラート
 # =====================================================================
-st.markdown('<div id="health-check"></div>', unsafe_allow_html=True)
+st.markdown('<div id="health-check" role="region" aria-label="ヘルスチェック"></div>', unsafe_allow_html=True)
 st.markdown("### 🏥 ヘルスチェック")
 _hc_as_of = st.session_state.get("last_refresh", "—")[:16]
 st.caption(f"各銘柄のトレンド・テクニカル指標をチェックし、売りタイミングや注意が必要な銘柄を自動検出します。｜ 🕐 データ取得: {_hc_as_of}")
@@ -1354,7 +1354,8 @@ if health_data is not None:
             pnl_text = f'<span style="color:{pnl_color}; font-weight:600;">{pnl:+.1f}%</span>'
 
             st.markdown(
-                f'<div class="sell-alert sell-alert-{urgency}">'
+                f'<div class="sell-alert sell-alert-{urgency}" role="alert"'
+                f' aria-label="{_urgency_label.get(urgency, "")} {alert["name"]}">'
                 f'<div class="sell-alert-header">'
                 f'{_urgency_emoji.get(urgency, "")} '
                 f'[{_urgency_label.get(urgency, "")}] '
@@ -1569,7 +1570,7 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 # 経済ニュース & PF影響
 # =====================================================================
-st.markdown('<div id="economic-news"></div>', unsafe_allow_html=True)
+st.markdown('<div id="economic-news" role="region" aria-label="経済ニュース"></div>', unsafe_allow_html=True)
 st.markdown("### 📰 経済ニュース & PF影響")
 _news_as_of = st.session_state.get("last_refresh", "—")[:16]
 st.caption(f"主要指数・商品に関する最新ニュースと、ポートフォリオへの影響度を自動分析します。｜ 🕐 データ取得: {_news_as_of}")
@@ -1805,7 +1806,7 @@ if econ_news:
                 _disp_no = news_item.get("_display_number", "")
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
                 _title_html = (
-                    f'<a href="{_link}" target="_blank">{news_item["title"]}</a>'
+                    f'<a href="{_link}" target="_blank" rel="noopener noreferrer">{news_item["title"]}</a>'
                     if _link else news_item["title"]
                 )
                 _pub = news_item.get("publisher", "")
@@ -1865,7 +1866,7 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 # 総資産推移グラフ
 # =====================================================================
-st.markdown('<div id="total-chart"></div>', unsafe_allow_html=True)
+st.markdown('<div id="total-chart" role="region" aria-label="チャート"></div>', unsafe_allow_html=True)
 st.markdown("### 📊 総資産推移")
 _history_as_of = str(history_df.index[-1])[:10] if not history_df.empty else "—"
 st.caption(f"資産全体の値動きを時系列で確認。ドローダウンやシャープレシオの推移も合わせて表示します。｜ 🕐 最終データ日: {_history_as_of}")
@@ -1970,7 +1971,7 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 # 現在の保有構成
 # =====================================================================
-st.markdown('<div id="holdings"></div>', unsafe_allow_html=True)
+st.markdown('<div id="holdings" role="region" aria-label="保有銘柄一覧"></div>', unsafe_allow_html=True)
 _holdings_as_of = snapshot.get("as_of", "")[:16].replace("T", " ") or "—"
 col_left, col_right = st.columns([3, 2])
 
@@ -2119,7 +2120,7 @@ if show_individual and not history_df.empty:
 # =====================================================================
 # 月次サマリー
 # =====================================================================
-st.markdown('<div id="monthly"></div>', unsafe_allow_html=True)
+st.markdown('<div id="monthly" role="region" aria-label="月次収支"></div>', unsafe_allow_html=True)
 st.markdown("### 📅 月次サマリー")
 st.caption("月末時点の評価額と前月比変動率を一覧表示。月単位でのパフォーマンス傾向を確認できます。")
 
@@ -2171,7 +2172,7 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 # 取引アクティビティ
 # =====================================================================
-st.markdown('<div id="trade-activity"></div>', unsafe_allow_html=True)
+st.markdown('<div id="trade-activity" role="region" aria-label="売買履歴"></div>', unsafe_allow_html=True)
 st.markdown("### 🔄 月次売買アクティビティ")
 trade_act_df = load_trade_activity()
 _trade_as_of = str(trade_act_df.index[-1])[:7] if not trade_act_df.empty else "—"
@@ -2208,7 +2209,7 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 # =====================================================================
 # Copilot チャット
 # =====================================================================
-st.markdown('<div id="copilot-chat"></div>', unsafe_allow_html=True)
+st.markdown('<div id="copilot-chat" role="region" aria-label="Copilot チャット"></div>', unsafe_allow_html=True)
 st.markdown("### 💬 Copilot に相談")
 st.caption("ダッシュボードの全データを踏まえて、Copilot に自由に質問できます。")
 
