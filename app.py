@@ -41,7 +41,7 @@ from components.copilot_client import (
     AVAILABLE_MODELS as COPILOT_MODELS,
 )
 from components.copilot_client import (
-    call as copilot_call,
+    call_with_session,
 )
 from components.copilot_client import (
     clear_execution_logs as copilot_clear_logs,
@@ -1871,6 +1871,8 @@ with _tab_copilot:
     # チャット履歴の初期化
     if "copilot_chat_messages" not in st.session_state:
         st.session_state["copilot_chat_messages"] = []
+    if "copilot_session_id" not in st.session_state:
+        st.session_state["copilot_session_id"] = None
 
     # --- ダッシュボードコンテキストを自動構築 ---
     def _build_chat_context() -> str:
@@ -1895,14 +1897,37 @@ with _tab_copilot:
             except Exception:
                 pass
 
-        # 保有銘柄
-        parts.append("\n## 保有銘柄")
-        for p in positions:
-            _sym = p.get("symbol", "")
-            _name = p.get("name", "")
-            _pnl = p.get("pnl_pct", 0)
-            _eval_jpy = p.get("evaluation_jpy", 0)
-            _sector = p.get("sector", "")
+        # Holdings summary: sector aggregation + top-5 individual entries.
+        # Why: sending every position inflates the prompt for large portfolios;
+        #      sector roll-ups preserve the strategic picture at lower token cost.
+        parts.append("\n## 保有銘柄サマリー")
+        parts.append(f"銘柄数: {len(positions)}, 総資産: ¥{total_value:,.0f}")
+
+        _sector_totals: dict[str, dict] = {}
+        for _p in positions:
+            _p_sector = _p.get("sector", "その他") or "その他"
+            _p_eval = _p.get("evaluation_jpy", 0)
+            if _p_sector not in _sector_totals:
+                _sector_totals[_p_sector] = {"total_jpy": 0.0, "count": 0}
+            _sector_totals[_p_sector]["total_jpy"] += _p_eval
+            _sector_totals[_p_sector]["count"] += 1
+
+        _sector_parts: list[str] = []
+        for _sector_name, _sector_data in sorted(
+            _sector_totals.items(), key=lambda item: item[1]["total_jpy"], reverse=True
+        ):
+            _sector_weight = (_sector_data["total_jpy"] / total_value * 100) if total_value else 0
+            _sector_parts.append(f"{_sector_name} {_sector_weight:.1f}%({_sector_data['count']}銘柄)")
+        parts.append("セクター構成: " + ", ".join(_sector_parts))
+
+        _sorted_positions = sorted(positions, key=lambda item: item.get("evaluation_jpy", 0), reverse=True)
+        parts.append("\n上位5銘柄（構成比順）:")
+        for _p in _sorted_positions[:5]:
+            _sym = _p.get("symbol", "")
+            _name = _p.get("name", "")
+            _pnl = _p.get("pnl_pct", 0)
+            _eval_jpy = _p.get("evaluation_jpy", 0)
+            _sector = _p.get("sector", "")
             _weight = (_eval_jpy / total_value * 100) if total_value else 0
             parts.append(
                 f"- {_name} ({_sym}): 評価額¥{_eval_jpy:,.0f} 構成比{_weight:.1f}% 損益{_pnl:+.1f}% セクター:{_sector}"
@@ -1914,7 +1939,7 @@ with _tab_copilot:
             _hc_alerts_list = health_data["sell_alerts"]
             _alert_pos = [p for p in _hc_pos if p.get("alert_level") != "none"]
             if _alert_pos:
-                parts.append("\n## ヘルスチェック アラート")
+                parts.append("\nアラート対象:")
                 for _hp in _alert_pos:
                     _hp_sym = _hp.get("symbol", "")
                     _hp_name = _hp.get("name", "")
@@ -1951,12 +1976,14 @@ with _tab_copilot:
             _impact_items = [n for n in _chat_econ_news if n.get("portfolio_impact", {}).get("impact_level") != "none"]
             if _impact_items:
                 parts.append("\n## 経済ニュース（PF影響あり）")
-                for _ni in _impact_items[:10]:  # 最大10件
+                for _ni in _impact_items[:5]:  # limit to 5 to keep context concise
                     _ni_title = _ni.get("title", "")
                     _ni_impact = _ni.get("portfolio_impact", {})
                     _ni_level = _ni_impact.get("impact_level", "")
                     _ni_reason = _ni_impact.get("reason", "")
-                    parts.append(f"- [{_ni_level}] {_ni_title}: {_ni_reason}")
+                    _ni_url = _ni.get("link", "")
+                    _ni_url_part = f" URL:{_ni_url}" if _ni_url else ""
+                    parts.append(f"- [{_ni_level}] {_ni_title}: {_ni_reason}{_ni_url_part}")
 
         return "\n".join(parts)
 
@@ -1985,16 +2012,28 @@ with _tab_copilot:
         unsafe_allow_html=True,
     )
 
-    # モデル表示 & クリアボタン
-    _chat_col_model, _chat_col_clear = st.columns([4, 1])
+    # Model display, new-session button, and full-clear button.
+    # Why: users need to start a fresh CLI session without losing visible
+    #      history (new-session) or wipe everything at once (clear).
+    _chat_col_model, _chat_col_new, _chat_col_clear = st.columns([3, 1, 1])
     with _chat_col_model:
         _chat_model_ids = [m[0] for m in COPILOT_MODELS]
         _chat_model_labels = [m[1] for m in COPILOT_MODELS]
         _chat_model_current_idx = _chat_model_ids.index(chat_model) if chat_model in _chat_model_ids else 0
         st.caption(f"🧠 モデル: **{_chat_model_labels[_chat_model_current_idx]}**（設定で変更可能）")
+        if st.session_state.get("copilot_session_id") is not None:
+            st.caption("🔗 セッション継続中")
+    with _chat_col_new:
+        if st.button("🔄 新規セッション", key="copilot_chat_new_session"):
+            # Reset session ID only; keep chat history for reference.
+            st.session_state["copilot_session_id"] = None
+            st.session_state["copilot_chat_messages"].append({"role": "assistant", "content": "---"})
+            st.rerun()
     with _chat_col_clear:
         if st.button("🗑️ クリア", key="copilot_chat_clear"):
+            # Full reset: history + session ID.
             st.session_state["copilot_chat_messages"] = []
+            st.session_state["copilot_session_id"] = None
             st.rerun()
 
     # チャット履歴表示
@@ -2023,39 +2062,49 @@ with _tab_copilot:
     )
 
     if _chat_input:
-        # ユーザーメッセージを追加
         st.session_state["copilot_chat_messages"].append({"role": "user", "content": _chat_input})
 
-        # コンテキスト付きプロンプトを構築
         _dashboard_ctx = _build_chat_context()
+
+        # When a session is active, the CLI already holds earlier context
+        # via --resume, so re-sending the full history wastes tokens.
+        _has_session = st.session_state.get("copilot_session_id") is not None
+
         _chat_prompt = (
             "あなたはポートフォリオ分析の専門家です。\n"
             "以下のダッシュボード情報を踏まえて、ユーザーの質問に日本語で回答してください。\n"
-            "回答は簡潔かつ具体的に。数値データを活用してください。\n\n"
+            "回答は簡潔かつ具体的に。数値データを活用してください。\n"
+            "ニュースURLが提供されている場合は、必要に応じてURLにアクセスして最新情報を確認してください。\n\n"
             f"--- ダッシュボードデータ ---\n{_dashboard_ctx}\n\n"
         )
-        # 直近の会話履歴を含める（最大5往復）
-        _recent_msgs = st.session_state["copilot_chat_messages"][-10:]
-        if len(_recent_msgs) > 1:
-            _chat_prompt += "--- 会話履歴 ---\n"
-            for _hm in _recent_msgs[:-1]:  # 最新のユーザー入力以外
-                _hm_role = "ユーザー" if _hm["role"] == "user" else "アシスタント"
-                _chat_prompt += f"{_hm_role}: {_hm['content']}\n"
-            _chat_prompt += "\n"
+
+        # Include conversation history only for the first turn (no session yet).
+        if not _has_session:
+            _recent_msgs = st.session_state["copilot_chat_messages"][-10:]
+            if len(_recent_msgs) > 1:
+                _chat_prompt += "--- 会話履歴 ---\n"
+                for _hm in _recent_msgs[:-1]:  # exclude the latest user message
+                    _hm_role = "ユーザー" if _hm["role"] == "user" else "アシスタント"
+                    _chat_prompt += f"{_hm_role}: {_hm['content']}\n"
+                _chat_prompt += "\n"
 
         _chat_prompt += f"--- ユーザーの質問 ---\n{_chat_input}"
 
-        # Copilot CLI 呼び出し
         with st.spinner("🤖 Copilot が考えています..."):
-            _chat_response = copilot_call(
+            _result = call_with_session(
                 _chat_prompt,
                 model=chat_model,
                 timeout=120,
                 source="dashboard_chat",
+                session_id=st.session_state.get("copilot_session_id"),
             )
 
-        if _chat_response:
-            st.session_state["copilot_chat_messages"].append({"role": "assistant", "content": _chat_response})
+        # Persist the session ID for subsequent turns.
+        if _result.session_id:
+            st.session_state["copilot_session_id"] = _result.session_id
+
+        if _result.response:
+            st.session_state["copilot_chat_messages"].append({"role": "assistant", "content": _result.response})
         else:
             st.session_state["copilot_chat_messages"].append(
                 {"role": "assistant", "content": "⚠️ 応答を取得できませんでした。Copilot CLI の状態を確認してください。"}
