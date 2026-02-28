@@ -219,25 +219,54 @@ st.sidebar.title("📊 Portfolio Dashboard")
 _tab_toc, _tab_settings, _tab_help = st.sidebar.tabs(["📑 目次", "⚙️ 設定", "❓ 用語集"])
 
 # --- 目次タブ ---
-# Why: タブ構造に移行したため、アンカーリンク型TOCの代わりにタブ内容の案内を表示
-# How: 各タブの内容をアイコン付きで簡潔に説明し、ユーザーの探索を支援する
+# Why: 静的テキストのTOCはクリック不可でサイドバーを圧迫し UX を低下させる
+# How: components.html で JS 付きボタンを描画し、クリックでメインタブを切り替える。
+#      タブのラベルテキストで DOM 上の button[data-baseweb="tab"] を検索して click() する。
 with _tab_toc:
-    st.markdown(
-        """**📈 サマリー** — KPI / 損益 / リスク指標（常時表示）
+    import streamlit.components.v1 as _stc_v1
 
-"""
-    )
-    st.markdown(
-        """**🏥 ヘルス & ニュース**\n"""
-        """ヘルスチェック・売りアラート・経済ニュース\n\n"""
-        """**📊 チャート分析**\n"""
-        """総資産推移・DD・Sharpe・将来推定・銘柄別チャート\n\n"""
-        """**🏢 保有構成**\n"""
-        """銘柄テーブル・セクター・通貨・ツリーマップ・相関\n\n"""
-        """**📅 月次 & 売買**\n"""
-        """月次サマリー・取引フロー・取引入力\n\n"""
-        """**💬 Copilot**\n"""
-        """ダッシュボードデータを踏まえた AI チャット"""
+    _toc_nav_items = [
+        ("🏥", "ヘルス & ニュース"),
+        ("📊", "チャート分析"),
+        ("🏢", "保有構成"),
+        ("📅", "月次 & 売買"),
+        ("💬", "Copilot"),
+    ]
+    _toc_buttons_html = ""
+    for _toc_icon, _toc_label in _toc_nav_items:
+        _toc_buttons_html += (
+            f'<button class="toc-nav" onclick="switchTab(\'{_toc_label}\')">{_toc_icon} {_toc_label}</button>'
+        )
+    _stc_v1.html(
+        """
+        <style>
+        .toc-hint{font-size:.78rem;opacity:.55;margin-bottom:6px}
+        .toc-nav{
+            display:block;width:100%;text-align:left;
+            padding:7px 10px;margin:3px 0;
+            background:transparent;border:1px solid rgba(128,128,128,.18);
+            border-radius:6px;cursor:pointer;font-size:.88rem;
+            color:inherit;transition:background .15s,border-color .15s;
+            font-family:inherit;
+        }
+        .toc-nav:hover{background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.4)}
+        </style>
+        <div class="toc-hint">📈 サマリーは常時表示</div>
+        """
+        + _toc_buttons_html
+        + """
+        <script>
+        function switchTab(label){
+            const tabs=window.parent.document.querySelectorAll(
+                'button[data-baseweb="tab"]'
+            );
+            for(const t of tabs){
+                if(t.textContent.includes(label)){t.click();break;}
+            }
+        }
+        </script>
+        """,
+        height=220,
     )
 
 # --- 設定の読み込み ---
