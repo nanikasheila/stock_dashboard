@@ -1,28 +1,39 @@
-"""汎用 GitHub Copilot CLI クライアント.
+"""汎用 GitHub Copilot SDK クライアント.
 
-``copilot`` CLI を任意のモジュールから呼び出すための共通インターフェース。
-ニュース分析・銘柄分析・その他の LLM 用途で横断的に再利用する。
+GitHub Copilot SDK (``github-copilot-sdk``) を通じて Copilot CLI サーバーと
+JSON-RPC で通信する共通インターフェース。
+ニュース分析・銘柄分析・ダッシュボードチャット等で横断的に再利用する。
 
 責務
 ----
-- CLI の存在確認 (``is_available``)
+- SDK / CLI の利用可能判定 (``is_available``)
 - プロンプトを渡して応答テキストを取得 (``call``)
-- 利用可能モデルの定義 (``AVAILABLE_MODELS``)
+- 利用可能モデルの動的取得 (``get_available_models``)
+- チャットセッション管理 (``call_with_session``)
 - 実行ログの記録と公開 (``get_execution_logs``)
 
-キャッシュはドメイン固有の上位モジュール（例: ``llm_analyzer``）で行う。
-本モジュールは純粋な CLI 実行層として薄く保つ。
+Why: subprocess.run で CLI を直接呼び出す方式から、SDK の JSON-RPC 通信に移行する。
+     SDK はプロセスライフサイクル管理・セッション管理・ツール実行を内蔵しており、
+     再接続やエラー回復が堅牢。
+How: CopilotClient シングルトンを専用バックグラウンドスレッドの asyncio ループで管理し、
+     同期呼び出し元（Streamlit）からは run_coroutine_threadsafe でブリッジする。
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import subprocess
 import threading
 import time
 import uuid
+from concurrent.futures import Future
 from dataclasses import dataclass
+from typing import Any
+
+from copilot import CopilotClient, ModelInfo, PermissionHandler
+from copilot.generated.session_events import SessionEventType
 
 logger = logging.getLogger(__name__)
 
@@ -32,30 +43,95 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL: str = "gpt-4.1"
 
-# サイドバー / 設定画面に表示するモデル選択肢: (model_id, display_label)
-# ``copilot --model`` の choices に準拠
-AVAILABLE_MODELS: list[tuple[str, str]] = [
-    # --- コスト効率（非 Premium / 低コスト） ---
-    ("gpt-4.1", "GPT-4.1（バランス型・低コスト）"),
-    ("gpt-5-mini", "GPT-5 Mini（高速・低コスト）"),
-    ("claude-haiku-4.5", "Claude Haiku 4.5（高速・低コスト）"),
-    # --- 標準 ---
+# SDK 未初期化時のフォールバック用ハードコードリスト
+_FALLBACK_MODELS: list[tuple[str, str]] = [
+    ("gpt-4.1", "GPT-4.1"),
+    ("gpt-5-mini", "GPT-5 Mini"),
+    ("claude-haiku-4.5", "Claude Haiku 4.5"),
     ("gpt-5.1", "GPT-5.1"),
-    ("gpt-5.2", "GPT-5.2（高精度）"),
+    ("gpt-5.2", "GPT-5.2"),
     ("claude-sonnet-4", "Claude Sonnet 4"),
     ("claude-sonnet-4.5", "Claude Sonnet 4.5"),
     ("claude-sonnet-4.6", "Claude Sonnet 4.6"),
     ("gemini-3-pro-preview", "Gemini 3 Pro"),
-    # --- Premium ---
-    ("gpt-5.1-codex", "GPT-5.1 Codex ⚡Premium"),
-    ("gpt-5.1-codex-mini", "GPT-5.1 Codex Mini ⚡Premium"),
-    ("gpt-5.1-codex-max", "GPT-5.1 Codex Max ⚡Premium"),
-    ("gpt-5.2-codex", "GPT-5.2 Codex ⚡Premium"),
-    ("gpt-5.3-codex", "GPT-5.3 Codex ⚡Premium"),
-    ("claude-opus-4.5", "Claude Opus 4.5 ⚡Premium"),
-    ("claude-opus-4.6", "Claude Opus 4.6 ⚡Premium"),
-    ("claude-opus-4.6-fast", "Claude Opus 4.6 Fast ⚡Premium"),
 ]
+
+# re-export: 後方互換のためフォールバックリストを公開
+AVAILABLE_MODELS: list[tuple[str, str]] = list(_FALLBACK_MODELS)
+
+# =====================================================================
+# 非同期イベントループ管理
+# =====================================================================
+
+_loop: asyncio.AbstractEventLoop | None = None
+_loop_thread: threading.Thread | None = None
+_loop_lock = threading.Lock()
+
+
+def _ensure_event_loop() -> asyncio.AbstractEventLoop:
+    """バックグラウンドスレッドで asyncio ループを起動・再利用する.
+
+    Why: Copilot SDK は async 専用。Streamlit は同期的に動作するため、
+         専用スレッドのイベントループ経由でブリッジする。
+    How: daemon スレッドで run_forever() を実行。
+         スレッドセーフにシングルトンとして初期化する。
+    """
+    global _loop, _loop_thread
+    with _loop_lock:
+        if _loop is not None and _loop.is_running():
+            return _loop
+        _loop = asyncio.new_event_loop()
+        _loop_thread = threading.Thread(target=_loop.run_forever, daemon=True, name="copilot-sdk-loop")
+        _loop_thread.start()
+        return _loop
+
+
+def _run_async(coro: Any, *, timeout: float | None = None) -> Any:
+    """async コルーチンを同期的に実行して結果を返す.
+
+    Why: 全公開 API は同期シグネチャを維持する必要がある。
+    How: バックグラウンドループに submit し、Future.result() でブロッキング待ち。
+    """
+    loop = _ensure_event_loop()
+    future: Future[Any] = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result(timeout=timeout)
+
+
+# =====================================================================
+# SDK クライアントシングルトン
+# =====================================================================
+
+_client: CopilotClient | None = None
+_client_lock = threading.Lock()
+
+
+async def _get_client() -> CopilotClient:
+    """CopilotClient を遅延初期化して返す.
+
+    Why: 初回呼び出し時にのみ CLI サーバーを起動する（起動コスト回避）。
+    How: ダブルチェックロッキングで排他的に初期化する。
+         auto_start=True なので create_session 時に自動接続される。
+    """
+    global _client
+    if _client is not None:
+        return _client
+    # NOTE: _client_lock は同期ロックだが、この関数は _run_async 経由で
+    # バックグラウンドスレッドから呼ばれる。初期化は同期ロック内で行い、
+    # start() は非同期で実行する。
+    with _client_lock:
+        if _client is not None:
+            return _client
+        _client = CopilotClient(
+            {
+                "log_level": "warning",
+                "auto_start": True,
+                "auto_restart": True,
+            }
+        )
+        await _client.start()
+        logger.info("[copilot_client] SDK client started")
+    return _client
+
 
 # =====================================================================
 # 実行ログ
@@ -66,17 +142,17 @@ MAX_LOG_ENTRIES: int = 50
 
 @dataclass
 class CLICallLog:
-    """1 回の CLI 呼び出しの記録."""
+    """1 回の SDK 呼び出しの記録."""
 
     timestamp: float
     model: str
-    prompt_preview: str  # プロンプトの先頭部分
+    prompt_preview: str
     success: bool
     duration_sec: float
-    response_length: int  # 応答の文字数
-    response_preview: str  # 応答の先頭部分
-    error: str  # エラーメッセージ（成功時は空）
-    source: str  # 呼び出し元の識別子（例: "news_analysis"）
+    response_length: int
+    response_preview: str
+    error: str
+    source: str
 
 
 _execution_logs: list[CLICallLog] = []
@@ -128,25 +204,28 @@ def _record_log(
     )
     with _log_lock:
         _execution_logs.append(entry)
-        # 上限を超えたら古いものを破棄
         while len(_execution_logs) > MAX_LOG_ENTRIES:
             _execution_logs.pop(0)
 
 
 # =====================================================================
-# CLI 存在確認
+# CLI / SDK 存在確認
 # =====================================================================
 
 
 def is_available() -> bool:
-    """GitHub Copilot CLI (``copilot`` コマンド) が利用可能か判定する.
+    """GitHub Copilot SDK が利用可能か判定する.
 
-    ``shutil.which`` で見つからない場合（WinGet App Execution Alias 等）は
-    ``copilot --version`` を実行して確認する。
+    Why: SDK は copilot CLI のインストールを前提とする。
+         CLI が存在しない環境では graceful に無効化する。
+    How: まず SDK パッケージの import を確認（モジュールレベルで済み）、
+         次に CLI バイナリの存在を確認する。
     """
-    if shutil.which("copilot") is not None:
-        return True
     try:
+        # SDK パッケージはモジュールレベルで import 済み
+        # CLI バイナリの存在確認
+        if shutil.which("copilot") is not None:
+            return True
         result = subprocess.run(
             ["copilot", "--version"],
             capture_output=True,
@@ -159,8 +238,111 @@ def is_available() -> bool:
 
 
 # =====================================================================
-# CLI 呼び出し
+# モデル一覧の動的取得
 # =====================================================================
+
+_models_cache: list[tuple[str, str]] | None = None
+_models_cache_lock = threading.Lock()
+_models_cache_timestamp: float = 0.0
+_MODELS_CACHE_TTL: float = 300.0  # 5分
+
+
+def get_available_models() -> list[tuple[str, str]]:
+    """利用可能なモデルの一覧を ``(model_id, display_name)`` で返す.
+
+    Why: ハードコードリストではなく SDK から動的に取得することで、
+         CLI アップデートで追加されたモデルも自動的に反映される。
+    How: client.list_models() を呼び出し、結果を 5 分間キャッシュする。
+         SDK 未初期化やエラー時はフォールバックリストを返す。
+    """
+    global _models_cache, _models_cache_timestamp
+    with _models_cache_lock:
+        now = time.time()
+        if _models_cache is not None and (now - _models_cache_timestamp) < _MODELS_CACHE_TTL:
+            return list(_models_cache)
+
+    if not is_available():
+        return list(_FALLBACK_MODELS)
+
+    try:
+        models: list[ModelInfo] = _run_async(_fetch_models(), timeout=30)
+        result = [(m.id, m.name) for m in models]
+        with _models_cache_lock:
+            _models_cache = result
+            _models_cache_timestamp = time.time()
+        # グローバルの AVAILABLE_MODELS も更新（後方互換）
+        AVAILABLE_MODELS.clear()
+        AVAILABLE_MODELS.extend(result)
+        return list(result)
+    except Exception as exc:
+        logger.warning("[copilot_client] list_models failed, using fallback: %s", exc)
+        return list(_FALLBACK_MODELS)
+
+
+async def _fetch_models() -> list[ModelInfo]:
+    """SDK からモデル一覧を取得する（内部 async ヘルパー）."""
+    client = await _get_client()
+    return await client.list_models()
+
+
+# =====================================================================
+# SDK 呼び出し（ワンショットセッション）
+# =====================================================================
+
+
+async def _async_call(
+    prompt: str,
+    *,
+    model: str,
+    timeout: int,
+    source: str,
+) -> str | None:
+    """SDK セッションを作成してプロンプトを送信し、最終応答を返す.
+
+    Why: 分析用途では1回のプロンプト→レスポンスで完結する。
+    How: create_session → send → assistant.message イベントで応答取得 →
+         session.idle で完了を検知 → destroy。
+         infinite_sessions を無効化してオーバーヘッドを削減。
+    """
+    client = await _get_client()
+
+    session = await client.create_session(
+        {
+            "model": model,
+            "on_permission_request": PermissionHandler.approve_all,
+            "infinite_sessions": {"enabled": False},
+        }
+    )
+
+    try:
+        result_text: str | None = None
+        done = asyncio.Event()
+        error_msg: str | None = None
+
+        def on_event(event: Any) -> None:
+            nonlocal result_text, error_msg
+            if event.type == SessionEventType.ASSISTANT_MESSAGE:
+                result_text = event.data.content
+            elif event.type == SessionEventType.SESSION_IDLE:
+                done.set()
+            elif event.type == SessionEventType.SESSION_ERROR:
+                error_msg = getattr(event.data, "message", None) or "unknown SDK error"
+                done.set()
+
+        session.on(on_event)
+        await session.send({"prompt": prompt})
+        await asyncio.wait_for(done.wait(), timeout=timeout)
+
+        if error_msg:
+            logger.warning("[copilot_client] SDK session error: %s", error_msg)
+            return None
+
+        return result_text
+    finally:
+        try:
+            await session.destroy()
+        except Exception:
+            pass
 
 
 def call(
@@ -173,85 +355,58 @@ def call(
     allow_urls: bool = False,
     allow_tools: bool = False,
 ) -> str | None:
-    """Invoke Copilot CLI and return the text response.
+    """Copilot SDK 経由でプロンプトを送信し応答テキストを返す.
 
-    Why: Multiple callers (llm_analyzer, dashboard chat) need a single
-         thin CLI execution layer with optional session-continuation and
-         tool-access flags.
-    How: Build the base command, then conditionally append --resume,
-         --allow-all-urls, and --allow-all-tools before subprocess.run.
-         All new parameters default to off so existing callers are
-         unaffected (backward compatible).
+    Why: llm_analyzer 等の複数モジュールが共通で使うワンショット呼び出し。
+    How: バックグラウンドループで _async_call を実行し、結果を同期で返す。
+         session_id / allow_urls / allow_tools は後方互換のために残すが、
+         SDK ではセッション作成時に設定するため現在は未使用パラメータ。
 
     Parameters
     ----------
     prompt : str
-        Prompt string sent to the LLM.
+        LLM に送信するプロンプト文字列。
     model : str | None
-        Model ID (``copilot --model``). Falls back to ``DEFAULT_MODEL``.
+        モデル ID。省略時は ``DEFAULT_MODEL``。
     timeout : int
-        Subprocess timeout in seconds.
+        応答待ちタイムアウト秒数。
     source : str
-        Caller identifier recorded in execution logs.
-        e.g. ``"news_analysis"``, ``"stock_analysis"``
+        実行ログに記録する呼び出し元識別子。
     session_id : str | None
-        When provided, passes ``--resume <session_id>`` so the CLI
-        continues an existing conversation context.
+        後方互換パラメータ（SDK では create_session で管理）。
     allow_urls : bool
-        When True, appends ``--allow-all-urls`` to let Copilot fetch URLs.
+        後方互換パラメータ。
     allow_tools : bool
-        When True, appends ``--allow-all-tools`` to grant full tool access.
+        後方互換パラメータ。
 
     Returns
     -------
     str | None
-        stdout text from CLI, or ``None`` on any failure.
+        LLM の応答テキスト。失敗時は ``None``。
     """
     mdl = model or DEFAULT_MODEL
-
-    cmd = [
-        "copilot",
-        "-p",
-        prompt,
-        "-s",
-        "--model",
-        mdl,
-    ]
-
-    if session_id is not None:
-        cmd.extend(["--resume", session_id])
-    if allow_urls:
-        cmd.append("--allow-all-urls")
-    if allow_tools:
-        cmd.append("--allow-all-tools")
-
     t0 = time.time()
+
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
+        output = _run_async(
+            _async_call(prompt, model=mdl, timeout=timeout, source=source),
+            timeout=timeout + 30,  # async ブリッジのマージン
         )
         duration = time.time() - t0
 
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            err_msg = f"rc={result.returncode}: {stderr[:200]}"
-            logger.warning("[copilot_client] CLI error: %s", err_msg)
+        if output is None:
             _record_log(
                 model=mdl,
                 prompt=prompt,
                 success=False,
                 duration=duration,
                 response=None,
-                error=err_msg,
+                error="no response from SDK",
                 source=source,
             )
             return None
 
-        output = result.stdout.strip()
+        output = output.strip()
         logger.info(
             "[copilot_client] success model=%s duration=%.1fs len=%d source=%s",
             mdl,
@@ -270,24 +425,9 @@ def call(
         )
         return output
 
-    except subprocess.TimeoutExpired:
+    except TimeoutError:
         duration = time.time() - t0
         err_msg = f"timeout ({timeout}s)"
-        logger.warning("[copilot_client] %s", err_msg)
-        _record_log(
-            model=mdl,
-            prompt=prompt,
-            success=False,
-            duration=duration,
-            response=None,
-            error=err_msg,
-            source=source,
-        )
-        return None
-
-    except FileNotFoundError:
-        duration = time.time() - t0
-        err_msg = "copilot command not found"
         logger.warning("[copilot_client] %s", err_msg)
         _record_log(
             model=mdl,
@@ -323,15 +463,76 @@ def call(
 
 @dataclass
 class ChatCallResult:
-    """Result of a chat-oriented CLI call that carries session context.
+    """Result of a chat-oriented SDK call that carries session context.
 
     Why: The dashboard chat needs to propagate a session_id across turns
-         so the CLI can maintain conversation context via --resume.
+         so the SDK can maintain conversation context via resume_session.
          Returning both fields together avoids a separate session-lookup.
     """
 
     response: str | None
     session_id: str | None
+
+
+async def _async_call_with_session(
+    prompt: str,
+    *,
+    model: str,
+    timeout: int,
+    source: str,
+    session_id: str | None,
+) -> ChatCallResult:
+    """SDK セッションを使ったチャット呼び出し（内部 async）.
+
+    Why: マルチターンのチャットではセッションを再利用することで、
+         会話コンテキストを維持しつつトークンコストを削減する。
+    How: session_id が None なら create_session で新規セッション、
+         あれば resume_session で既存セッションを再開する。
+         チャットセッションは infinite_sessions を有効にして
+         長い会話でもコンテキストを自動圧縮する。
+    """
+    client = await _get_client()
+
+    effective_session_id = session_id if session_id is not None else str(uuid.uuid4())
+
+    session_config: dict[str, Any] = {
+        "model": model,
+        "on_permission_request": PermissionHandler.approve_all,
+    }
+
+    try:
+        if session_id is not None:
+            session = await client.resume_session(effective_session_id, session_config)
+        else:
+            session_config["session_id"] = effective_session_id
+            session = await client.create_session(session_config)
+    except Exception as exc:
+        logger.warning("[copilot_client] session create/resume failed: %s", exc)
+        return ChatCallResult(response=None, session_id=effective_session_id)
+
+    try:
+        result_text: str | None = None
+        done = asyncio.Event()
+
+        def on_event(event: Any) -> None:
+            nonlocal result_text
+            if event.type == SessionEventType.ASSISTANT_MESSAGE:
+                result_text = event.data.content
+            elif event.type in (SessionEventType.SESSION_IDLE, SessionEventType.SESSION_ERROR):
+                done.set()
+
+        session.on(on_event)
+        await session.send({"prompt": prompt})
+        await asyncio.wait_for(done.wait(), timeout=timeout)
+
+        return ChatCallResult(response=result_text, session_id=effective_session_id)
+    except TimeoutError:
+        logger.warning("[copilot_client] chat session timeout (%ds)", timeout)
+        return ChatCallResult(response=None, session_id=effective_session_id)
+    except Exception as exc:
+        logger.warning("[copilot_client] chat session error: %s", exc)
+        return ChatCallResult(response=None, session_id=effective_session_id)
+    # NOTE: チャットセッションは destroy しない（次のターンで再利用するため）
 
 
 def call_with_session(
@@ -344,40 +545,38 @@ def call_with_session(
     allow_urls: bool = True,
     allow_tools: bool = True,
 ) -> ChatCallResult:
-    """Call Copilot CLI with session continuation and return result + session_id.
+    """Copilot SDK でチャットセッション付き呼び出しを行い結果を返す.
 
-    Why: The multi-turn dashboard chat requires a stable session identifier
-         so the CLI can recall earlier context without re-sending the full
-         history every turn (reduces token cost and latency).
-    How: If no session_id is provided, a new UUID4 is generated and passed
-         as --resume so the CLI anchors a new session to that ID.  The
-         generated or provided session_id is always echoed back in the
-         returned ChatCallResult, letting the caller persist it in
-         st.session_state for subsequent turns.
+    Why: マルチターンのダッシュボードチャットでセッション ID を伝搬し、
+         会話コンテキストを維持する。
+    How: SDK の resume_session / create_session でセッションを管理し、
+         send() で応答を取得する。allow_urls / allow_tools は
+         後方互換のために残すが SDK では設定不要。
 
     Parameters
     ----------
     prompt : str
-        Prompt string sent to the LLM.
+        LLM に送信するプロンプト文字列。
     model : str | None
-        Model ID. Falls back to ``DEFAULT_MODEL``.
+        モデル ID。省略時は ``DEFAULT_MODEL``。
     timeout : int
-        Subprocess timeout in seconds.
+        応答待ちタイムアウト秒数。
     source : str
-        Caller identifier recorded in execution logs.
+        実行ログに記録する呼び出し元識別子。
     session_id : str | None
-        Existing session ID to resume.  When None, a new UUID is created.
+        既存セッション ID。None の場合は新規 UUID を生成。
     allow_urls : bool
-        Passed through to ``call()``; defaults True for chat use-case.
+        後方互換パラメータ。
     allow_tools : bool
-        Passed through to ``call()``; defaults True for chat use-case.
+        後方互換パラメータ。
 
     Returns
     -------
     ChatCallResult
-        ``.response`` is the CLI output (or None on failure).
-        ``.session_id`` is the session ID that was used (new or provided).
+        ``.response`` は LLM 応答（失敗時 None）。
+        ``.session_id`` は使用されたセッション ID。
     """
+    mdl = model or DEFAULT_MODEL
     effective_session_id = session_id if session_id is not None else str(uuid.uuid4())
 
     logger.info(
@@ -386,14 +585,41 @@ def call_with_session(
         effective_session_id,
     )
 
-    response = call(
-        prompt,
-        model=model,
-        timeout=timeout,
-        source=source,
-        session_id=effective_session_id,
-        allow_urls=allow_urls,
-        allow_tools=allow_tools,
-    )
+    t0 = time.time()
+    try:
+        result = _run_async(
+            _async_call_with_session(
+                prompt,
+                model=mdl,
+                timeout=timeout,
+                source=source,
+                session_id=session_id,
+            ),
+            timeout=timeout + 30,
+        )
+        duration = time.time() - t0
+        _record_log(
+            model=mdl,
+            prompt=prompt,
+            success=result.response is not None,
+            duration=duration,
+            response=result.response,
+            error="" if result.response else "no response",
+            source=source,
+        )
+        return result
 
-    return ChatCallResult(response=response, session_id=effective_session_id)
+    except Exception as exc:
+        duration = time.time() - t0
+        err_msg = f"unexpected: {exc}"
+        logger.warning("[copilot_client] call_with_session error: %s", err_msg)
+        _record_log(
+            model=mdl,
+            prompt=prompt,
+            success=False,
+            duration=duration,
+            response=None,
+            error=err_msg,
+            source=source,
+        )
+        return ChatCallResult(response=None, session_id=effective_session_id)

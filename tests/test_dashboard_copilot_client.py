@@ -1,4 +1,4 @@
-"""Tests for copilot_client — generic Copilot CLI client."""
+"""Tests for copilot_client — SDK-based Copilot client."""
 
 import sys
 from pathlib import Path
@@ -15,6 +15,7 @@ from components.copilot_client import (
     call,
     call_with_session,
     clear_execution_logs,
+    get_available_models,
     get_execution_logs,
     is_available,
 )
@@ -45,11 +46,12 @@ class TestIsAvailable:
 
 
 # ---------------------------------------------------------------------------
-# AVAILABLE_MODELS
+# AVAILABLE_MODELS (fallback list)
 # ---------------------------------------------------------------------------
 class TestModels:
-    def test_has_many_models(self):
-        assert len(AVAILABLE_MODELS) >= 10
+    def test_has_models(self):
+        """Fallback list has some models."""
+        assert len(AVAILABLE_MODELS) >= 5
 
     def test_models_are_tuples(self):
         for m in AVAILABLE_MODELS:
@@ -59,13 +61,51 @@ class TestModels:
         ids = [m[0] for m in AVAILABLE_MODELS]
         assert DEFAULT_MODEL in ids
 
-    def test_has_premium_models(self):
-        labels = [m[1] for m in AVAILABLE_MODELS]
-        assert any("Premium" in label for label in labels)
 
-    def test_has_low_cost_models(self):
-        labels = [m[1] for m in AVAILABLE_MODELS]
-        assert any("低コスト" in label for label in labels)
+# ---------------------------------------------------------------------------
+# get_available_models()
+# ---------------------------------------------------------------------------
+class TestGetAvailableModels:
+    def test_returns_fallback_when_unavailable(self):
+        """When CLI is not available, fallback list is returned."""
+        with patch("components.copilot_client.is_available", return_value=False):
+            models = get_available_models()
+        assert len(models) >= 5
+        assert all(isinstance(m, tuple) and len(m) == 2 for m in models)
+
+    def test_returns_dynamic_models_on_success(self):
+        """When SDK succeeds, dynamic models are returned."""
+        from types import SimpleNamespace
+
+        import components.copilot_client as _cc
+
+        saved = list(_cc.AVAILABLE_MODELS)
+        mock_model1 = SimpleNamespace(id="gpt-4.1", name="GPT-4.1")
+        mock_model2 = SimpleNamespace(id="claude-sonnet-4", name="Claude Sonnet 4")
+        try:
+            with (
+                patch("components.copilot_client.is_available", return_value=True),
+                patch("components.copilot_client._run_async", return_value=[mock_model1, mock_model2]),
+                patch("components.copilot_client._models_cache", None),
+                patch("components.copilot_client._models_cache_timestamp", 0.0),
+            ):
+                models = get_available_models()
+            assert ("gpt-4.1", "GPT-4.1") in models
+            assert ("claude-sonnet-4", "Claude Sonnet 4") in models
+        finally:
+            _cc.AVAILABLE_MODELS.clear()
+            _cc.AVAILABLE_MODELS.extend(saved)
+
+    def test_returns_fallback_on_sdk_error(self):
+        """When SDK raises, fallback list is returned."""
+        with (
+            patch("components.copilot_client.is_available", return_value=True),
+            patch("components.copilot_client._run_async", side_effect=RuntimeError("SDK error")),
+            patch("components.copilot_client._models_cache", None),
+            patch("components.copilot_client._models_cache_timestamp", 0.0),
+        ):
+            models = get_available_models()
+        assert len(models) >= 5
 
 
 # ---------------------------------------------------------------------------
@@ -73,47 +113,45 @@ class TestModels:
 # ---------------------------------------------------------------------------
 class TestCall:
     def test_success(self):
-        mock_result = MagicMock(returncode=0, stdout="hello world\n", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        """call() returns stripped response text on success."""
+        with patch("components.copilot_client._run_async", return_value="hello world\n"):
             result = call("test prompt", source="test")
         assert result == "hello world"
 
-    def test_returns_none_on_error(self):
-        mock_result = MagicMock(returncode=1, stdout="", stderr="error msg")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+    def test_returns_none_on_sdk_none(self):
+        """call() returns None when SDK returns None."""
+        with patch("components.copilot_client._run_async", return_value=None):
             result = call("test prompt")
         assert result is None
 
     def test_returns_none_on_timeout(self):
-        import subprocess
-
-        with patch(
-            "components.copilot_client.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="copilot", timeout=60)
-        ):
+        """call() returns None on timeout."""
+        with patch("components.copilot_client._run_async", side_effect=TimeoutError("timeout")):
             result = call("test prompt", timeout=60)
         assert result is None
 
-    def test_returns_none_when_not_found(self):
-        with patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError):
+    def test_returns_none_on_exception(self):
+        """call() returns None on unexpected exception."""
+        with patch("components.copilot_client._run_async", side_effect=RuntimeError("boom")):
             result = call("test prompt")
         assert result is None
 
     def test_uses_default_model(self):
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
+        """call() passes DEFAULT_MODEL when model is not specified."""
+        with patch("components.copilot_client._run_async", return_value="ok"):
             call("test prompt")
-        cmd = mock_run.call_args[0][0]
-        assert "--model" in cmd
-        idx = cmd.index("--model")
-        assert cmd[idx + 1] == DEFAULT_MODEL
+        # The coroutine passed to _run_async is _async_call with model=DEFAULT_MODEL
+        # We verify via execution logs
+        logs = get_execution_logs()
+        assert any(log.model == DEFAULT_MODEL for log in logs)
 
     def test_uses_specified_model(self):
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
+        """call() passes the specified model."""
+        clear_execution_logs()
+        with patch("components.copilot_client._run_async", return_value="ok"):
             call("test prompt", model="claude-sonnet-4.6")
-        cmd = mock_run.call_args[0][0]
-        idx = cmd.index("--model")
-        assert cmd[idx + 1] == "claude-sonnet-4.6"
+        logs = get_execution_logs()
+        assert logs[0].model == "claude-sonnet-4.6"
 
 
 # ---------------------------------------------------------------------------
@@ -127,8 +165,7 @@ class TestExecutionLogs:
         assert get_execution_logs() == []
 
     def test_records_success(self):
-        mock_result = MagicMock(returncode=0, stdout="response text", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with patch("components.copilot_client._run_async", return_value="response text"):
             call("test prompt", source="test_source")
         logs = get_execution_logs()
         assert len(logs) == 1
@@ -139,20 +176,14 @@ class TestExecutionLogs:
         assert log.error == ""
 
     def test_records_failure(self):
-        mock_result = MagicMock(returncode=1, stdout="", stderr="some error")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with patch("components.copilot_client._run_async", return_value=None):
             call("test prompt", source="fail_test")
         logs = get_execution_logs()
         assert len(logs) == 1
         assert logs[0].success is False
-        assert "some error" in logs[0].error
 
     def test_records_timeout(self):
-        import subprocess
-
-        with patch(
-            "components.copilot_client.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="copilot", timeout=30)
-        ):
+        with patch("components.copilot_client._run_async", side_effect=TimeoutError("timeout")):
             call("test prompt", timeout=30)
         logs = get_execution_logs()
         assert len(logs) == 1
@@ -161,8 +192,7 @@ class TestExecutionLogs:
 
     def test_newest_first(self):
         """get_execution_logs は新しい順で返す."""
-        mock_result = MagicMock(returncode=0, stdout="r1", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with patch("components.copilot_client._run_async", return_value="r1"):
             call("first", source="first")
             call("second", source="second")
         logs = get_execution_logs()
@@ -170,8 +200,7 @@ class TestExecutionLogs:
         assert logs[1].source == "first"
 
     def test_clear(self):
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with patch("components.copilot_client._run_async", return_value="ok"):
             call("test")
         assert len(get_execution_logs()) == 1
         clear_execution_logs()
@@ -179,64 +208,25 @@ class TestExecutionLogs:
 
     def test_prompt_preview_truncated(self):
         long_prompt = "x" * 500
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with patch("components.copilot_client._run_async", return_value="ok"):
             call(long_prompt)
         logs = get_execution_logs()
         assert len(logs[0].prompt_preview) <= 150
 
     def test_log_has_duration(self):
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        with patch("components.copilot_client._run_async", return_value="ok"):
             call("test")
         logs = get_execution_logs()
         assert logs[0].duration_sec >= 0
 
 
 # ---------------------------------------------------------------------------
-# call() — new parameters (session_id, allow_urls, allow_tools)
-# ---------------------------------------------------------------------------
-class TestCallNewParameters:
-    def test_call_with_session_id(self):
-        """--resume <id> is appended to command when session_id is given."""
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
-            call("prompt", session_id="test-session-123")
-        cmd = mock_run.call_args[0][0]
-        assert "--resume" in cmd
-        assert cmd[cmd.index("--resume") + 1] == "test-session-123"
-
-    def test_call_with_allow_urls(self):
-        """--allow-all-urls is appended when allow_urls=True."""
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
-            call("prompt", allow_urls=True)
-        cmd = mock_run.call_args[0][0]
-        assert "--allow-all-urls" in cmd
-
-    def test_call_with_allow_tools(self):
-        """--allow-all-tools is appended when allow_tools=True."""
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
-            call("prompt", allow_tools=True)
-        cmd = mock_run.call_args[0][0]
-        assert "--allow-all-tools" in cmd
-
-    def test_call_backward_compatible(self):
-        """No new flags appear when all new parameters are at their defaults."""
-        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run:
-            call("prompt")
-        cmd = mock_run.call_args[0][0]
-        assert "--resume" not in cmd
-        assert "--allow-all-urls" not in cmd
-        assert "--allow-all-tools" not in cmd
-
-
-# ---------------------------------------------------------------------------
 # call_with_session() and ChatCallResult
 # ---------------------------------------------------------------------------
 class TestCallWithSession:
+    def setup_method(self):
+        clear_execution_logs()
+
     def test_chat_call_result_dataclass(self):
         """ChatCallResult stores response and session_id."""
         result = ChatCallResult(response="hello", session_id="abc-123")
@@ -244,19 +234,28 @@ class TestCallWithSession:
         assert result.session_id == "abc-123"
 
     def test_call_with_session_creates_new_id(self):
-        """When session_id is None, a new UUID is generated and returned."""
-        mock_result = MagicMock(returncode=0, stdout="answer", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        """When session_id is None, a new session_id is generated and returned."""
+        generated_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        mock_result = ChatCallResult(response="answer", session_id=generated_id)
+        with patch("components.copilot_client._run_async", return_value=mock_result):
             result = call_with_session("prompt", session_id=None)
         assert result.session_id is not None
-        # Must be a valid UUID4 string (32 hex chars + 4 hyphens = 36)
-        assert len(result.session_id) == 36
         assert result.response == "answer"
 
     def test_call_with_session_preserves_id(self):
         """When session_id is provided, the same ID is echoed in the result."""
-        mock_result = MagicMock(returncode=0, stdout="answer", stderr="")
-        with patch("components.copilot_client.subprocess.run", return_value=mock_result):
+        mock_result = ChatCallResult(response="answer", session_id="existing-session-id")
+        with patch("components.copilot_client._run_async", return_value=mock_result):
             result = call_with_session("prompt", session_id="existing-session-id")
         assert result.session_id == "existing-session-id"
         assert result.response == "answer"
+
+    def test_call_with_session_records_log(self):
+        """call_with_session records execution log."""
+        mock_result = ChatCallResult(response="answer", session_id="s1")
+        with patch("components.copilot_client._run_async", return_value=mock_result):
+            call_with_session("test", source="chat_test")
+        logs = get_execution_logs()
+        assert len(logs) == 1
+        assert logs[0].source == "chat_test"
+        assert logs[0].success is True
