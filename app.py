@@ -10,6 +10,7 @@ Usage
 
 from __future__ import annotations
 
+import html
 import sys
 import time
 from pathlib import Path
@@ -109,415 +110,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# カスタムCSS
-st.markdown(
-    """
-<style>
-    /* Smooth scroll for TOC anchor navigation */
-    html { scroll-behavior: smooth; }
-    .positive { color: #4ade80; }
-    .negative { color: #f87171; }
-    /* TOC link styling */
-    .toc-link {
-        display: block;
-        text-decoration: none;
-        padding: 7px 12px;
-        border-radius: 6px;
-        color: inherit;
-        font-size: 0.88rem;
-        transition: background 0.2s;
-        margin-bottom: 2px;
-    }
-    .toc-link:hover {
-        background: rgba(99,102,241,0.18);
-        color: #a5b4fc;
-    }
-    /* KPI cards — theme-aware */
-    .kpi-card {
-        background: var(--secondary-background-color);
-        border-radius: 12px;
-        text-align: center;
-    }
-    .kpi-main {
-        padding: 28px 24px 22px;
-        border-bottom: 3px solid rgba(99,102,241,0.5);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    }
-    .kpi-sub {
-        padding: 14px 16px;
-        border-radius: 10px;
-    }
-    .kpi-risk {
-        padding: 10px 6px;
-        border-radius: 8px;
-        min-width: 0;
-    }
-    .kpi-label {
-        font-size: 0.8rem;
-        font-weight: 500;
-        opacity: 0.65;
-        letter-spacing: 0.02em;
-        margin-bottom: 5px;
-    }
-    .kpi-main .kpi-label {
-        font-size: 0.88rem;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        margin-bottom: 8px;
-    }
-    .kpi-value {
-        font-size: 2.2rem;
-        font-weight: 700;
-        line-height: 1.2;
-    }
-    .kpi-value-sub {
-        font-size: 1.25rem;
-        font-weight: 600;
-    }
-    .kpi-value-risk {
-        font-size: 1.05rem;
-        font-weight: 600;
-        margin-top: 2px;
-    }
-    /* KPI row spacing */
-    .kpi-spacer { margin-top: 10px; }
-    /* Section divider */
-    .section-divider {
-        border: none;
-        border-top: 1px solid rgba(148,163,184,0.2);
-        margin: 28px 0 20px 0;
-    }
-    /* Sell alert banner */
-    .sell-alert {
-        border-radius: 10px;
-        padding: 14px 18px;
-        margin-bottom: 10px;
-        border-left: 4px solid;
-    }
-    .sell-alert-critical {
-        background: rgba(248,113,113,0.12);
-        border-left-color: #f87171;
-    }
-    .sell-alert-warning {
-        background: rgba(251,191,36,0.12);
-        border-left-color: #fbbf24;
-    }
-    .sell-alert-info {
-        background: rgba(96,165,250,0.12);
-        border-left-color: #60a5fa;
-    }
-    .sell-alert-header {
-        font-weight: 700;
-        font-size: 0.95rem;
-        margin-bottom: 4px;
-    }
-    .sell-alert-reason {
-        font-size: 0.88rem;
-        opacity: 0.85;
-        margin-bottom: 4px;
-    }
-    .sell-alert-detail {
-        font-size: 0.82rem;
-        opacity: 0.7;
-        padding-left: 12px;
-    }
-    .sell-alert-ai {
-        font-size: 0.82rem;
-        line-height: 1.5;
-        margin-top: 6px;
-        padding: 6px 10px;
-        background: rgba(99,102,241,0.08);
-        border-radius: 6px;
-        border-left: 2px solid rgba(99,102,241,0.3);
-    }
-    /* Health card */
-    .health-card {
-        background: var(--secondary-background-color);
-        border-radius: 10px;
-        padding: 14px 16px;
-        margin-bottom: 8px;
-        border-left: 4px solid;
-    }
-    .health-card-healthy { border-left-color: #4ade80; }
-    .health-card-early_warning { border-left-color: #fbbf24; }
-    .health-card-caution { border-left-color: #fb923c; }
-    .health-card-exit { border-left-color: #f87171; }
-    /* News cards */
-    .news-card {
-        background: var(--secondary-background-color);
-        border-radius: 10px;
-        padding: 14px 16px;
-        margin-bottom: 8px;
-        border-left: 4px solid #64748b;
-        transition: background 0.2s;
-    }
-    .news-card:hover {
-        filter: brightness(1.05);
-    }
-    .news-impact-high { border-left-color: #f87171; }
-    .news-impact-medium { border-left-color: #fbbf24; }
-    .news-impact-low { border-left-color: #60a5fa; }
-    .news-impact-none { border-left-color: #64748b; }
-    .news-title {
-        font-weight: 600;
-        font-size: 0.92rem;
-        line-height: 1.4;
-        margin-bottom: 6px;
-    }
-    .news-title a {
-        color: inherit;
-        text-decoration: none;
-    }
-    .news-title a:hover {
-        text-decoration: underline;
-        opacity: 0.9;
-    }
-    .news-meta {
-        font-size: 0.78rem;
-        opacity: 0.6;
-        margin-bottom: 6px;
-    }
-    .news-badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 0.72rem;
-        font-weight: 600;
-        margin-right: 4px;
-        margin-bottom: 2px;
-    }
-    .news-badge-category {
-        background: rgba(99,102,241,0.15);
-        color: #a5b4fc;
-    }
-    .news-badge-impact-high {
-        background: rgba(248,113,113,0.18);
-        color: #fca5a5;
-    }
-    .news-badge-impact-medium {
-        background: rgba(251,191,36,0.18);
-        color: #fde68a;
-    }
-    .news-badge-impact-low {
-        background: rgba(96,165,250,0.15);
-        color: #93c5fd;
-    }
-    .news-affected {
-        font-size: 0.8rem;
-        opacity: 0.75;
-        margin-top: 4px;
-        padding-left: 4px;
-    }
-    .news-number {
-        display: inline-block;
-        background: rgba(148,163,184,0.2);
-        color: #94a3b8;
-        font-size: 0.68rem;
-        font-weight: 700;
-        border-radius: 4px;
-        padding: 1px 5px;
-        margin-right: 6px;
-        vertical-align: middle;
-    }
-    /* Summary card */
-    .news-summary-card {
-        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(59,130,246,0.06));
-        border: 1px solid rgba(99,102,241,0.2);
-        border-radius: 12px;
-        padding: 18px 20px;
-    }
-    .news-summary-header {
-        font-weight: 700;
-        font-size: 1.0rem;
-        margin-bottom: 10px;
-    }
-    .news-summary-overview {
-        font-size: 0.9rem;
-        line-height: 1.6;
-        margin-bottom: 14px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid rgba(148,163,184,0.15);
-    }
-    .news-summary-points {
-        margin-bottom: 12px;
-    }
-    .news-summary-point {
-        margin-bottom: 8px;
-        line-height: 1.5;
-    }
-    .news-summary-cat {
-        font-weight: 600;
-        font-size: 0.85rem;
-        margin-right: 6px;
-    }
-    .news-summary-text {
-        font-size: 0.85rem;
-        opacity: 0.9;
-    }
-    .news-ref {
-        display: inline-block;
-        background: rgba(99,102,241,0.18);
-        color: #a5b4fc;
-        font-size: 0.68rem;
-        font-weight: 700;
-        border-radius: 4px;
-        padding: 0px 4px;
-        margin: 0 1px;
-    }
-    .news-refs {
-        font-size: 0.72rem;
-        opacity: 0.7;
-    }
-    .news-summary-alert {
-        background: rgba(251,191,36,0.1);
-        border: 1px solid rgba(251,191,36,0.25);
-        border-radius: 8px;
-        padding: 10px 14px;
-        font-size: 0.85rem;
-        margin-top: 10px;
-    }
-    /* Health summary card */
-    .health-summary-card {
-        background: linear-gradient(135deg, rgba(74,222,128,0.08), rgba(59,130,246,0.06));
-        border: 1px solid rgba(74,222,128,0.2);
-        border-radius: 12px;
-        padding: 18px 20px;
-    }
-    .health-summary-header {
-        font-weight: 700;
-        font-size: 1.0rem;
-        margin-bottom: 10px;
-    }
-    .health-summary-overview {
-        font-size: 0.9rem;
-        line-height: 1.6;
-        margin-bottom: 14px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid rgba(148,163,184,0.15);
-    }
-    .health-summary-stocks-toggle > summary {
-        font-weight: 600;
-        font-size: 0.88rem;
-        padding: 6px 0;
-        cursor: pointer;
-        list-style: none;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        color: #94a3b8;
-    }
-    .health-summary-stocks-toggle > summary::-webkit-details-marker { display: none; }
-    .health-summary-stocks-toggle > summary::before {
-        content: '▶';
-        font-size: 0.7rem;
-        transition: transform 0.2s;
-    }
-    .health-summary-stocks-toggle[open] > summary::before {
-        transform: rotate(90deg);
-    }
-    .health-summary-stocks-toggle[open] > summary {
-        margin-bottom: 8px;
-    }
-    .health-summary-stock {
-        margin-bottom: 8px;
-        padding: 8px 12px;
-        background: rgba(148,163,184,0.06);
-        border-radius: 8px;
-        border-left: 3px solid #94a3b8;
-    }
-    .health-summary-stock-exit {
-        border-left-color: #f87171;
-    }
-    .health-summary-stock-caution {
-        border-left-color: #fb923c;
-    }
-    .health-summary-stock-early_warning {
-        border-left-color: #fbbf24;
-    }
-    .health-summary-stock-name {
-        font-weight: 600;
-        font-size: 0.88rem;
-        margin-bottom: 2px;
-    }
-    .health-summary-stock-text {
-        font-size: 0.82rem;
-        opacity: 0.85;
-        line-height: 1.5;
-    }
-    .health-summary-action {
-        display: inline-block;
-        background: rgba(99,102,241,0.15);
-        color: #a5b4fc;
-        font-size: 0.72rem;
-        font-weight: 600;
-        border-radius: 4px;
-        padding: 1px 6px;
-        margin-left: 6px;
-    }
-    .health-summary-warning {
-        background: rgba(248,113,113,0.1);
-        border: 1px solid rgba(248,113,113,0.25);
-        border-radius: 8px;
-        padding: 10px 14px;
-        font-size: 0.85rem;
-        margin-top: 10px;
-    }
-    /* Copilot Chat */
-    .copilot-chat-container {
-        background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(139,92,246,0.05));
-        border: 1px solid rgba(99,102,241,0.18);
-        border-radius: 12px;
-        padding: 18px 20px;
-    }
-    .copilot-chat-header {
-        font-weight: 700;
-        font-size: 1.0rem;
-        margin-bottom: 6px;
-    }
-    .copilot-chat-context-badge {
-        display: inline-block;
-        background: rgba(74,222,128,0.12);
-        color: #4ade80;
-        font-size: 0.72rem;
-        font-weight: 600;
-        border-radius: 4px;
-        padding: 2px 8px;
-        margin-right: 4px;
-    }
-    .copilot-chat-msg {
-        margin-bottom: 10px;
-        padding: 10px 14px;
-        border-radius: 10px;
-        font-size: 0.88rem;
-        line-height: 1.6;
-    }
-    .copilot-chat-msg-user {
-        background: rgba(99,102,241,0.12);
-        border-left: 3px solid rgba(99,102,241,0.5);
-    }
-    .copilot-chat-msg-ai {
-        background: rgba(148,163,184,0.08);
-        border-left: 3px solid rgba(148,163,184,0.3);
-    }
-    .copilot-chat-msg-role {
-        font-weight: 600;
-        font-size: 0.78rem;
-        opacity: 0.7;
-        margin-bottom: 3px;
-    }
-    .copilot-chat-msg-text {
-        white-space: pre-wrap;
-        word-break: break-word;
-    }
-    .copilot-chat-thinking {
-        font-size: 0.82rem;
-        opacity: 0.6;
-        padding: 8px 0;
-    }
-</style>
-""",
-    unsafe_allow_html=True,
-)
+# カスタムCSS — 外部ファイルから読み込み
+# Why: 約400行のCSSをapp.pyに埋め込むと保守性が低い
+# How: static/dashboard.css に分離し、起動時に読み込む
+_CSS_PATH = _SCRIPT_DIR / "static" / "dashboard.css"
+_custom_css = _CSS_PATH.read_text(encoding="utf-8") if _CSS_PATH.exists() else ""
+st.markdown(f"<style>{_custom_css}</style>", unsafe_allow_html=True)
 
 
 # =====================================================================
@@ -1786,22 +1384,22 @@ if econ_news:
 
                 # LLM分析の理由（あれば表示）
                 _reason_html = ""
-                _reason = _impact.get("reason", "")
+                _reason = html.escape(_impact.get("reason", ""))
                 if _reason and news_item.get("analysis_method") == "llm":
                     _reason_html = f'<div style="font-size:0.82rem; margin-top:4px; opacity:0.85;">💡 {_reason}</div>'
 
                 # タイトルリンク
-                _link = news_item.get("link", "")
+                # Why: ニュースタイトル・リンクは外部ソース由来のため XSS 防止
+                _link = html.escape(news_item.get("link", ""))
+                _safe_title = html.escape(news_item.get("title", ""))
                 _disp_no = news_item.get("_display_number", "")
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
-                _title_html = (
-                    f'<a href="{_link}" target="_blank">{news_item["title"]}</a>' if _link else news_item["title"]
-                )
+                _title_html = f'<a href="{_link}" target="_blank">{_safe_title}</a>' if _link else _safe_title
 
                 # 発行元・日時
-                _pub = news_item.get("publisher", "")
+                _pub = html.escape(news_item.get("publisher", ""))
                 _time = news_item.get("publish_time", "")
-                _source = news_item.get("source_name", "")
+                _source = html.escape(news_item.get("source_name", ""))
                 _meta_parts = [p for p in [_pub, _source, _time[:16] if _time else ""] if p]
                 _meta = " · ".join(_meta_parts)
                 _meta_html = f'<div class="news-meta">{_meta}</div>' if _meta else ""
@@ -1819,15 +1417,15 @@ if econ_news:
     if _other_news:
         with st.expander(f"📋 その他のニュース（{len(_other_news)}件）", expanded=False):
             for news_item in _other_news:
-                _link = news_item.get("link", "")
+                # Why: 外部ソース由来テキストの XSS 防止
+                _link = html.escape(news_item.get("link", ""))
+                _safe_title = html.escape(news_item.get("title", ""))
                 _disp_no = news_item.get("_display_number", "")
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
-                _title_html = (
-                    f'<a href="{_link}" target="_blank">{news_item["title"]}</a>' if _link else news_item["title"]
-                )
-                _pub = news_item.get("publisher", "")
+                _title_html = f'<a href="{_link}" target="_blank">{_safe_title}</a>' if _link else _safe_title
+                _pub = html.escape(news_item.get("publisher", ""))
                 _time = news_item.get("publish_time", "")
-                _source = news_item.get("source_name", "")
+                _source = html.escape(news_item.get("source_name", ""))
                 _meta_parts = [p for p in [_pub, _source, _time[:16] if _time else ""] if p]
                 _meta = " · ".join(_meta_parts)
 
