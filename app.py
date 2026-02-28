@@ -38,13 +38,16 @@ from components.charts import (
     build_treemap_chart,
 )
 from components.copilot_client import (
-    AVAILABLE_MODELS as COPILOT_MODELS,
-)
-from components.copilot_client import (
     call_with_session,
 )
 from components.copilot_client import (
     clear_execution_logs as copilot_clear_logs,
+)
+from components.copilot_client import (
+    get_available_models as _get_copilot_models,
+)
+from components.copilot_client import (
+    get_available_models as _get_llm_models,
 )
 from components.copilot_client import (
     get_execution_logs as copilot_get_logs,
@@ -68,9 +71,6 @@ from components.data_loader import (
     get_sector_breakdown,
     get_trade_activity,
     run_dashboard_health_check,
-)
-from components.llm_analyzer import (
-    AVAILABLE_MODELS as LLM_MODELS,
 )
 from components.llm_analyzer import (
     CACHE_TTL_OPTIONS as LLM_CACHE_OPTIONS,
@@ -219,25 +219,54 @@ st.sidebar.title("📊 Portfolio Dashboard")
 _tab_toc, _tab_settings, _tab_help = st.sidebar.tabs(["📑 目次", "⚙️ 設定", "❓ 用語集"])
 
 # --- 目次タブ ---
-# Why: タブ構造に移行したため、アンカーリンク型TOCの代わりにタブ内容の案内を表示
-# How: 各タブの内容をアイコン付きで簡潔に説明し、ユーザーの探索を支援する
+# Why: 静的テキストのTOCはクリック不可でサイドバーを圧迫し UX を低下させる
+# How: components.html で JS 付きボタンを描画し、クリックでメインタブを切り替える。
+#      タブのラベルテキストで DOM 上の button[data-baseweb="tab"] を検索して click() する。
 with _tab_toc:
-    st.markdown(
-        """**📈 サマリー** — KPI / 損益 / リスク指標（常時表示）
+    import streamlit.components.v1 as _stc_v1
 
-"""
-    )
-    st.markdown(
-        """**🏥 ヘルス & ニュース**\n"""
-        """ヘルスチェック・売りアラート・経済ニュース\n\n"""
-        """**📊 チャート分析**\n"""
-        """総資産推移・DD・Sharpe・将来推定・銘柄別チャート\n\n"""
-        """**🏢 保有構成**\n"""
-        """銘柄テーブル・セクター・通貨・ツリーマップ・相関\n\n"""
-        """**📅 月次 & 売買**\n"""
-        """月次サマリー・取引フロー・取引入力\n\n"""
-        """**💬 Copilot**\n"""
-        """ダッシュボードデータを踏まえた AI チャット"""
+    _toc_nav_items = [
+        ("🏥", "ヘルス & ニュース"),
+        ("📊", "チャート分析"),
+        ("🏢", "保有構成"),
+        ("📅", "月次 & 売買"),
+        ("💬", "Copilot"),
+    ]
+    _toc_buttons_html = ""
+    for _toc_icon, _toc_label in _toc_nav_items:
+        _toc_buttons_html += (
+            f'<button class="toc-nav" onclick="switchTab(\'{_toc_label}\')">{_toc_icon} {_toc_label}</button>'
+        )
+    _stc_v1.html(
+        """
+        <style>
+        .toc-hint{font-size:.78rem;opacity:.55;margin-bottom:6px}
+        .toc-nav{
+            display:block;width:100%;text-align:left;
+            padding:7px 10px;margin:3px 0;
+            background:transparent;border:1px solid rgba(128,128,128,.18);
+            border-radius:6px;cursor:pointer;font-size:.88rem;
+            color:inherit;transition:background .15s,border-color .15s;
+            font-family:inherit;
+        }
+        .toc-nav:hover{background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.4)}
+        </style>
+        <div class="toc-hint">📈 サマリーは常時表示</div>
+        """
+        + _toc_buttons_html
+        + """
+        <script>
+        function switchTab(label){
+            const tabs=window.parent.document.querySelectorAll(
+                'button[data-baseweb="tab"]'
+            );
+            for(const t of tabs){
+                if(t.textContent.includes(label)){t.click();break;}
+            }
+        }
+        </script>
+        """,
+        height=220,
     )
 
 # --- 設定の読み込み ---
@@ -405,8 +434,8 @@ with _tab_settings:
             disabled=not llm_enabled,
         )
 
-        _model_ids = [m[0] for m in LLM_MODELS]
-        _model_labels = [m[1] for m in LLM_MODELS]
+        _model_ids = [m[0] for m in _get_llm_models()]
+        _model_labels = [m[1] for m in _get_llm_models()]
         _saved_model = _saved.get("llm_model", "gpt-4.1")
         _model_saved_idx = _model_ids.index(_saved_model) if _saved_model in _model_ids else 1
 
@@ -436,8 +465,8 @@ with _tab_settings:
 
         # --- Copilot チャットモデル ---
         st.markdown("---")
-        _chat_model_ids = [m[0] for m in COPILOT_MODELS]
-        _chat_model_labels = [m[1] for m in COPILOT_MODELS]
+        _chat_model_ids = [m[0] for m in _get_copilot_models()]
+        _chat_model_labels = [m[1] for m in _get_copilot_models()]
         _saved_chat_model = _saved.get("chat_model", "claude-sonnet-4")
         _chat_model_saved_idx = _chat_model_ids.index(_saved_chat_model) if _saved_chat_model in _chat_model_ids else 0
         chat_model_label = st.selectbox(
@@ -2017,8 +2046,8 @@ with _tab_copilot:
     #      history (new-session) or wipe everything at once (clear).
     _chat_col_model, _chat_col_new, _chat_col_clear = st.columns([3, 1, 1])
     with _chat_col_model:
-        _chat_model_ids = [m[0] for m in COPILOT_MODELS]
-        _chat_model_labels = [m[1] for m in COPILOT_MODELS]
+        _chat_model_ids = [m[0] for m in _get_copilot_models()]
+        _chat_model_labels = [m[1] for m in _get_copilot_models()]
         _chat_model_current_idx = _chat_model_ids.index(chat_model) if chat_model in _chat_model_ids else 0
         st.caption(f"🧠 モデル: **{_chat_model_labels[_chat_model_current_idx]}**（設定で変更可能）")
         if st.session_state.get("copilot_session_id") is not None:

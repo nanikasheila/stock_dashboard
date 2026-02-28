@@ -293,9 +293,9 @@ class TestAnalyzeNewsBatch:
             result = analyze_news_batch([], [])
             assert result == []
 
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_successful_cli_call(self, _mock_which, mock_run):
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_successful_cli_call(self, _mock_avail, mock_copilot):
         llm_response = json.dumps(
             [
                 {
@@ -307,11 +307,7 @@ class TestAnalyzeNewsBatch:
                 },
             ]
         )
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=llm_response,
-            stderr="",
-        )
+        mock_copilot.return_value = llm_response
 
         news = [{"title": "Fed raises rates", "publisher": "Reuters", "source_name": "S&P 500"}]
         positions = [{"symbol": "8306.T", "sector": "Financial Services", "currency": "JPY", "weight_pct": 30.0}]
@@ -322,12 +318,28 @@ class TestAnalyzeNewsBatch:
         assert result[0]["impact_level"] == "high"
         assert "8306.T" in result[0]["affected_holdings"]
 
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_cli_timeout_returns_none(self, _mock_which, mock_run):
-        import subprocess
+    @patch("components.llm_analyzer.copilot_call", return_value=None)
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_cli_timeout_returns_none(self, _mock_avail, _mock_copilot):
+        result = analyze_news_batch(
+            [{"title": "test", "publisher": "AP", "source_name": "test"}],
+            [],
+        )
+        assert result is None
 
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="copilot", timeout=60)
+    @patch("components.llm_analyzer.copilot_call", return_value=None)
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_cli_error_returns_none(self, _mock_avail, _mock_copilot):
+        result = analyze_news_batch(
+            [{"title": "test", "publisher": "AP", "source_name": "test"}],
+            [],
+        )
+        assert result is None
+
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_invalid_json_response_returns_none(self, _mock_avail, mock_copilot):
+        mock_copilot.return_value = "Sorry, I cannot process that."
 
         result = analyze_news_batch(
             [{"title": "test", "publisher": "AP", "source_name": "test"}],
@@ -335,49 +347,19 @@ class TestAnalyzeNewsBatch:
         )
         assert result is None
 
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_cli_error_returns_none(self, _mock_which, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=1,
-            stdout="",
-            stderr="Error: not authenticated",
-        )
-
-        result = analyze_news_batch(
-            [{"title": "test", "publisher": "AP", "source_name": "test"}],
-            [],
-        )
-        assert result is None
-
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_invalid_json_response_returns_none(self, _mock_which, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="Sorry, I cannot process that.",
-            stderr="",
-        )
-
-        result = analyze_news_batch(
-            [{"title": "test", "publisher": "AP", "source_name": "test"}],
-            [],
-        )
-        assert result is None
-
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_model_passed_to_cli(self, _mock_which, mock_run):
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_model_passed_to_cli(self, _mock_avail, mock_copilot):
         """Verify model param is used in CLI call."""
-        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+        mock_copilot.return_value = "[]"
         analyze_news_batch(
             [{"title": "test news", "publisher": "AP", "source_name": "test"}],
             [],
             model="claude-sonnet-4",
         )
-        cmd = mock_run.call_args[0][0]
-        idx = cmd.index("--model")
-        assert cmd[idx + 1] == "claude-sonnet-4"
+        assert mock_copilot.call_count == 1
+        _, kwargs = mock_copilot.call_args
+        assert kwargs.get("model") == "claude-sonnet-4"
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +369,8 @@ class TestAnalyzeNewsBatch:
 
 class TestAvailableModels:
     def test_has_entries(self):
-        assert len(AVAILABLE_MODELS) >= 10
+        """Fallback list has some models (dynamic list may have more)."""
+        assert len(AVAILABLE_MODELS) >= 5
 
     def test_entries_are_tuples(self):
         for m in AVAILABLE_MODELS:
@@ -396,32 +379,10 @@ class TestAvailableModels:
             assert isinstance(m[0], str)  # model_id
             assert isinstance(m[1], str)  # display label
 
-    def test_includes_low_cost_models(self):
+    def test_includes_common_models(self):
         ids = [m[0] for m in AVAILABLE_MODELS]
         assert "gpt-4.1" in ids
-        assert "gpt-5-mini" in ids
-        assert "claude-haiku-4.5" in ids
-
-    def test_includes_premium_models(self):
-        ids = [m[0] for m in AVAILABLE_MODELS]
-        assert "claude-opus-4.6" in ids
-        assert "gpt-5.3-codex" in ids
-
-    def test_premium_models_labeled(self):
-        """Premium models should have ⚡Premium in their label."""
-        premium_ids = {
-            "gpt-5.1-codex",
-            "gpt-5.1-codex-mini",
-            "gpt-5.1-codex-max",
-            "gpt-5.2-codex",
-            "gpt-5.3-codex",
-            "claude-opus-4.5",
-            "claude-opus-4.6",
-            "claude-opus-4.6-fast",
-        }
-        for mid, label in AVAILABLE_MODELS:
-            if mid in premium_ids:
-                assert "⚡Premium" in label, f"{mid} should have Premium label"
+        assert "claude-sonnet-4" in ids
 
 
 # ---------------------------------------------------------------------------
@@ -454,9 +415,9 @@ class TestCacheMechanism:
         items2 = [{"title": "B"}]
         assert _compute_news_hash(items1) != _compute_news_hash(items2)
 
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_cache_hit_skips_cli_call(self, _mock_which, mock_run):
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_cache_hit_skips_cli_call(self, _mock_avail, mock_copilot):
         """Second call with same news should not invoke CLI."""
         llm_response = json.dumps(
             [
@@ -469,11 +430,7 @@ class TestCacheMechanism:
                 },
             ]
         )
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=llm_response,
-            stderr="",
-        )
+        mock_copilot.return_value = llm_response
 
         news = [{"title": "Fed raises rates", "publisher": "R", "source_name": "SP"}]
         pos = [{"symbol": "8306.T", "sector": "Financial", "currency": "JPY", "weight_pct": 100}]
@@ -481,70 +438,58 @@ class TestCacheMechanism:
         # First call: CLI invoked
         result1 = analyze_news_batch(news, pos, cache_ttl=3600)
         assert result1 is not None
-        assert mock_run.call_count == 1
+        assert mock_copilot.call_count == 1
 
         # Second call: cache hit, CLI NOT invoked
         result2 = analyze_news_batch(news, pos, cache_ttl=3600)
         assert result2 is not None
-        assert mock_run.call_count == 1  # still 1
+        assert mock_copilot.call_count == 1  # still 1
         assert result1 == result2
 
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_cache_miss_on_different_news(self, _mock_which, mock_run):
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_cache_miss_on_different_news(self, _mock_avail, mock_copilot):
         """Different news titles should trigger new CLI call."""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps(
-                [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
-            ),
-            stderr="",
+        mock_copilot.return_value = json.dumps(
+            [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
         )
 
         news1 = [{"title": "News A", "publisher": "R", "source_name": "SP"}]
         news2 = [{"title": "News B", "publisher": "R", "source_name": "SP"}]
 
         analyze_news_batch(news1, [], cache_ttl=3600)
-        assert mock_run.call_count == 1
+        assert mock_copilot.call_count == 1
 
         analyze_news_batch(news2, [], cache_ttl=3600)
-        assert mock_run.call_count == 2
+        assert mock_copilot.call_count == 2
 
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_cache_miss_on_model_change(self, _mock_which, mock_run):
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_cache_miss_on_model_change(self, _mock_avail, mock_copilot):
         """Changing model should invalidate cache."""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps(
-                [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
-            ),
-            stderr="",
+        mock_copilot.return_value = json.dumps(
+            [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
         )
 
         news = [{"title": "Same News", "publisher": "R", "source_name": "SP"}]
         analyze_news_batch(news, [], model="gpt-4.1", cache_ttl=3600)
-        assert mock_run.call_count == 1
+        assert mock_copilot.call_count == 1
 
         analyze_news_batch(news, [], model="claude-sonnet-4", cache_ttl=3600)
-        assert mock_run.call_count == 2
+        assert mock_copilot.call_count == 2
 
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_cache_disabled_with_zero_ttl(self, _mock_which, mock_run):
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_cache_disabled_with_zero_ttl(self, _mock_avail, mock_copilot):
         """cache_ttl=0 should always call CLI."""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps(
-                [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
-            ),
-            stderr="",
+        mock_copilot.return_value = json.dumps(
+            [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
         )
 
         news = [{"title": "Same News", "publisher": "R", "source_name": "SP"}]
         analyze_news_batch(news, [], cache_ttl=0)
         analyze_news_batch(news, [], cache_ttl=0)
-        assert mock_run.call_count == 2
+        assert mock_copilot.call_count == 2
 
     def test_clear_cache(self):
         from components.llm_analyzer import _analysis_cache
@@ -558,15 +503,11 @@ class TestCacheMechanism:
         info = get_cache_info()
         assert info["cached"] is False
 
-    @patch("components.copilot_client.subprocess.run")
-    @patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot")
-    def test_cache_info_after_analysis(self, _mock_which, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps(
-                [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
-            ),
-            stderr="",
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_cache_info_after_analysis(self, _mock_avail, mock_copilot):
+        mock_copilot.return_value = json.dumps(
+            [{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]
         )
         news = [{"title": "Test", "publisher": "R", "source_name": "SP"}]
         analyze_news_batch(news, [], model="gpt-4.1", cache_ttl=3600)
@@ -743,10 +684,9 @@ class TestGenerateNewsSummary:
                 "portfolio_alert": "注意点テスト",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=summary_response),
         ):
             result = generate_news_summary(self._make_news(), [])
             assert result is not None
@@ -762,18 +702,17 @@ class TestGenerateNewsSummary:
                 "portfolio_alert": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
         news = self._make_news()
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run,
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=summary_response) as mock_copilot,
         ):
             # First call
             result1 = generate_news_summary(news, [], cache_ttl=3600)
             # Second call — should use cache
             result2 = generate_news_summary(news, [], cache_ttl=3600)
             assert result1 == result2
-            assert mock_run.call_count == 1  # Only called once
+            assert mock_copilot.call_count == 1  # Only called once
 
     def test_cache_info(self):
         info = get_summary_cache_info()
@@ -786,10 +725,9 @@ class TestGenerateNewsSummary:
                 "portfolio_alert": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=summary_response),
         ):
             generate_news_summary(self._make_news(), [], cache_ttl=3600)
 
@@ -804,10 +742,9 @@ class TestGenerateNewsSummary:
                 "portfolio_alert": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=summary_response),
         ):
             generate_news_summary(self._make_news(), [], cache_ttl=3600)
 
@@ -816,10 +753,9 @@ class TestGenerateNewsSummary:
         assert get_summary_cache_info()["cached"] is False
 
     def test_cli_failure_returns_none(self):
-        mock_result = MagicMock(returncode=1, stdout="", stderr="error")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=None),
         ):
             result = generate_news_summary(self._make_news(), [])
             assert result is None
@@ -833,19 +769,15 @@ class TestGenerateNewsSummary:
                 "portfolio_alert": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=summary_response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=summary_response) as mock_copilot,
         ):
             generate_news_summary(self._make_news(), [])
 
-        from components.copilot_client import clear_execution_logs, get_execution_logs
-
-        logs = get_execution_logs()
-        summary_logs = [entry for entry in logs if entry.source == "news_summary"]
-        assert len(summary_logs) >= 1
-        clear_execution_logs()
+        assert mock_copilot.call_count >= 1
+        _, kwargs = mock_copilot.call_args
+        assert kwargs.get("source") == "news_summary"
 
 
 # ---------------------------------------------------------------------------
@@ -996,10 +928,9 @@ class TestGenerateHealthSummary:
                 "risk_warning": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=response),
         ):
             result = generate_health_summary(self._make_health_data())
             assert result is not None
@@ -1015,16 +946,15 @@ class TestGenerateHealthSummary:
                 "risk_warning": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result) as mock_run,
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=response) as mock_copilot,
         ):
             data = self._make_health_data()
             r1 = generate_health_summary(data, cache_ttl=3600)
             r2 = generate_health_summary(data, cache_ttl=3600)
             assert r1 == r2
-            assert mock_run.call_count == 1  # second call uses cache
+            assert mock_copilot.call_count == 1  # second call uses cache
 
     def test_cache_info_and_clear(self):
         clear_health_summary_cache()
@@ -1037,10 +967,9 @@ class TestGenerateHealthSummary:
                 "risk_warning": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=response),
         ):
             generate_health_summary(self._make_health_data(), cache_ttl=3600)
 
@@ -1049,10 +978,9 @@ class TestGenerateHealthSummary:
         assert get_health_summary_cache_info()["cached"] is False
 
     def test_cli_failure_returns_none(self):
-        mock_result = MagicMock(returncode=1, stdout="", stderr="error")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=None),
         ):
             result = generate_health_summary(self._make_health_data())
             assert result is None
@@ -1066,19 +994,15 @@ class TestGenerateHealthSummary:
                 "risk_warning": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=response) as mock_copilot,
         ):
             generate_health_summary(self._make_health_data())
 
-        from components.copilot_client import clear_execution_logs, get_execution_logs
-
-        logs = get_execution_logs()
-        health_logs = [entry for entry in logs if entry.source == "health_summary"]
-        assert len(health_logs) >= 1
-        clear_execution_logs()
+        assert mock_copilot.call_count >= 1
+        _, kwargs = mock_copilot.call_args
+        assert kwargs.get("source") == "health_summary"
 
     def test_with_news_items(self):
         """Verify generate_health_summary accepts news_items parameter."""
@@ -1093,7 +1017,7 @@ class TestGenerateHealthSummary:
                 },
             },
         ]
-        response = json.dumps(
+        mock_copilot_response = json.dumps(
             {
                 "overview": "ニュースを踏まえると好転可能性あり",
                 "stock_assessments": [
@@ -1102,10 +1026,9 @@ class TestGenerateHealthSummary:
                 "risk_warning": "",
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=response, stderr="")
         with (
-            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
-            patch("components.copilot_client.subprocess.run", return_value=mock_result),
+            patch("components.llm_analyzer.is_available", return_value=True),
+            patch("components.llm_analyzer.copilot_call", return_value=mock_copilot_response),
         ):
             result = generate_health_summary(self._make_health_data(), news_items=news)
             assert result is not None
