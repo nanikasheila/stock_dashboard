@@ -50,7 +50,7 @@ html { scroll-behavior: smooth; }
 .kpi-label {
     font-size: 0.875rem;
     font-weight: 500;
-    opacity: 0.75;
+    opacity: 0.78;
     letter-spacing: 0.02em;
     margin-bottom: 5px;
 }
@@ -111,7 +111,7 @@ html { scroll-behavior: smooth; }
 }
 .sell-alert-reason {
     font-size: 0.88rem;
-    opacity: 0.85;
+    opacity: 0.9;
     margin-bottom: 4px;
 }
 .sell-alert-detail {
@@ -173,8 +173,8 @@ html { scroll-behavior: smooth; }
     opacity: 0.9;
 }
 .news-meta {
-    font-size: 0.8rem;
-    opacity: 0.65;
+    font-size: 0.85rem;
+    opacity: 0.8;
     margin-bottom: 6px;
 }
 .news-badge {
@@ -203,8 +203,8 @@ html { scroll-behavior: smooth; }
     color: #93c5fd;
 }
 .news-affected {
-    font-size: 0.8rem;
-    opacity: 0.75;
+    font-size: 0.85rem;
+    opacity: 0.82;
     margin-top: 4px;
     padding-left: 4px;
 }
@@ -404,7 +404,7 @@ html { scroll-behavior: smooth; }
 }
 .copilot-chat-msg-role {
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     opacity: 0.75;
     margin-bottom: 3px;
 }
@@ -414,6 +414,6 @@ html { scroll-behavior: smooth; }
 }
 .copilot-chat-thinking {
     font-size: 0.875rem;
-    opacity: 0.65;
+    opacity: 0.75;
     padding: 8px 0;
 }
