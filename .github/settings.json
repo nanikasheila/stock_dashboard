@@ -15,10 +15,11 @@
   "project": {
     "name": "stock_dashboard",
     "language": "python",
+    "entryPoint": "run.py",
     "test": {
-      "command": "python tools/skill-creator/scripts/quick_validate.py",
-      "directory": "tools/skill-creator/scripts/",
-      "pattern": "*.py"
+      "command": "python -m pytest tests/ -q",
+      "directory": "tests/",
+      "pattern": "test_*.py"
     }
   },
   "agents": {
