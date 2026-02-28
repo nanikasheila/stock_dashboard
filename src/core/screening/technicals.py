@@ -88,7 +88,7 @@ def detect_pullback_in_uptrend(hist: pd.DataFrame) -> dict:
     # RSI
     rsi_series = compute_rsi(close, period=14)
     current_rsi = float(rsi_series.iloc[-1])
-    prev_rsi = float(rsi_series.iloc[-2]) if len(rsi_series) >= 2 else float("nan")
+    _prev_rsi = float(rsi_series.iloc[-2]) if len(rsi_series) >= 2 else float("nan")
 
     # Volume ratio: 5-day avg / 20-day avg
     vol_5 = volume.rolling(window=5).mean().iloc[-1]
@@ -105,10 +105,7 @@ def detect_pullback_in_uptrend(hist: pd.DataFrame) -> dict:
     uptrend = (current_price > current_sma200) and (current_sma50 > current_sma200)
 
     # --- Condition 2: Pullback depth ---
-    is_pullback = (
-        (-0.20 <= pullback_pct <= -0.05)
-        and (current_price > current_sma200)
-    )
+    is_pullback = (-0.20 <= pullback_pct <= -0.05) and (current_price > current_sma200)
 
     # --- Condition 3: Bounce signal (score-based with lookback) ---
     _, _, lower_band = compute_bollinger_bands(close, period=20, std_dev=2.0)
@@ -133,7 +130,11 @@ def detect_pullback_in_uptrend(hist: pd.DataFrame) -> dict:
         day_prev_rsi = float(rsi_series.iloc[idx - 1]) if abs(idx - 1) < len(rsi_series) else float("nan")
         day_close = float(close.iloc[idx])
         day_prev_close = float(close.iloc[idx - 1]) if abs(idx - 1) < len(close) else float("nan")
-        day_lower = float(lower_band.iloc[idx]) if abs(idx) < len(lower_band) and not np.isnan(lower_band.iloc[idx]) else float("nan")
+        day_lower = (
+            float(lower_band.iloc[idx])
+            if abs(idx) < len(lower_band) and not np.isnan(lower_band.iloc[idx])
+            else float("nan")
+        )
 
         # Volume ratio for this specific day
         if abs(idx) < len(volume):
@@ -153,11 +154,7 @@ def detect_pullback_in_uptrend(hist: pd.DataFrame) -> dict:
         }
 
         # RSI reversal: RSI in 25-50 zone and turning up (40 pts)
-        if (
-            25.0 <= day_rsi <= 50.0
-            and not np.isnan(day_prev_rsi)
-            and day_rsi > day_prev_rsi
-        ):
+        if 25.0 <= day_rsi <= 50.0 and not np.isnan(day_prev_rsi) and day_rsi > day_prev_rsi:
             day_score += 40.0
             day_details["rsi_reversal"] = True
 

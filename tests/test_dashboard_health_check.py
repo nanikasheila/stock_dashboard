@@ -4,14 +4,12 @@ Tests run_dashboard_health_check() and _compute_sell_alerts() in
 the portfolio-dashboard data_loader module.
 """
 
-import math
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-import pytest
 
 # --- プロジェクトルートを sys.path に追加 ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -19,50 +17,54 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from components.data_loader import (
-    run_dashboard_health_check,
     _compute_sell_alerts,
-    _stability_emoji,
     _is_nan,
+    _stability_emoji,
+    run_dashboard_health_check,
 )
-
 from src.core.health_check import (
-    ALERT_NONE,
-    ALERT_EARLY_WARNING,
     ALERT_CAUTION,
     ALERT_EXIT,
+    ALERT_NONE,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_uptrend_hist(n: int = 300, base: float = 100.0) -> pd.DataFrame:
     """Steadily rising prices — clear uptrend."""
     prices = [base + i * 0.5 for i in range(n)]
-    return pd.DataFrame({
-        "Close": prices,
-        "Volume": [1_000_000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "Close": prices,
+            "Volume": [1_000_000] * n,
+        }
+    )
 
 
 def _make_downtrend_hist(n: int = 300, base: float = 200.0) -> pd.DataFrame:
     """Steadily falling prices — clear downtrend."""
     prices = [base - i * 0.3 for i in range(n)]
-    return pd.DataFrame({
-        "Close": prices,
-        "Volume": [1_000_000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "Close": prices,
+            "Volume": [1_000_000] * n,
+        }
+    )
 
 
 def _make_flat_hist(n: int = 300, base: float = 100.0) -> pd.DataFrame:
     """Flat prices with tiny noise."""
     rng = np.random.RandomState(42)
     prices = [base + rng.uniform(-0.1, 0.1) for _ in range(n)]
-    return pd.DataFrame({
-        "Close": prices,
-        "Volume": [1_000_000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "Close": prices,
+            "Volume": [1_000_000] * n,
+        }
+    )
 
 
 def _make_stock_detail(symbol="7203.T", **overrides):
@@ -95,6 +97,7 @@ def _make_stock_detail(symbol="7203.T", **overrides):
 # Tests for _stability_emoji
 # ---------------------------------------------------------------------------
 
+
 class TestStabilityEmoji:
     def test_stable(self):
         assert _stability_emoji("stable") == "✅"
@@ -119,6 +122,7 @@ class TestStabilityEmoji:
 # Tests for _is_nan
 # ---------------------------------------------------------------------------
 
+
 class TestIsNan:
     def test_nan(self):
         assert _is_nan(float("nan")) is True
@@ -139,6 +143,7 @@ class TestIsNan:
 # ---------------------------------------------------------------------------
 # Tests for _compute_sell_alerts
 # ---------------------------------------------------------------------------
+
 
 class TestComputeSellAlerts:
     """Test sell alert generation logic."""
@@ -170,10 +175,12 @@ class TestComputeSellAlerts:
 
     def test_exit_alert_generates_critical(self):
         """EXIT level should generate a critical sell alert."""
-        positions = [self._make_position(
-            alert_level=ALERT_EXIT,
-            alert_reasons=["デッドクロス + 変化スコア複数悪化"],
-        )]
+        positions = [
+            self._make_position(
+                alert_level=ALERT_EXIT,
+                alert_reasons=["デッドクロス + 変化スコア複数悪化"],
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         assert len(alerts) == 1
         assert alerts[0]["urgency"] == "critical"
@@ -181,11 +188,13 @@ class TestComputeSellAlerts:
 
     def test_caution_with_loss_generates_critical(self):
         """CAUTION + big unrealized loss should generate critical."""
-        positions = [self._make_position(
-            alert_level=ALERT_CAUTION,
-            pnl_pct=-10.0,
-            alert_reasons=["変化スコア複数悪化"],
-        )]
+        positions = [
+            self._make_position(
+                alert_level=ALERT_CAUTION,
+                pnl_pct=-10.0,
+                alert_reasons=["変化スコア複数悪化"],
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         assert len(alerts) == 1
         assert alerts[0]["urgency"] == "critical"
@@ -193,11 +202,13 @@ class TestComputeSellAlerts:
 
     def test_caution_without_loss_generates_warning(self):
         """CAUTION without loss should generate warning, not critical."""
-        positions = [self._make_position(
-            alert_level=ALERT_CAUTION,
-            pnl_pct=5.0,
-            alert_reasons=["SMA50がSMA200に接近"],
-        )]
+        positions = [
+            self._make_position(
+                alert_level=ALERT_CAUTION,
+                pnl_pct=5.0,
+                alert_reasons=["SMA50がSMA200に接近"],
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         assert len(alerts) >= 1
         assert alerts[0]["urgency"] == "warning"
@@ -205,10 +216,12 @@ class TestComputeSellAlerts:
 
     def test_big_profit_with_downtrend(self):
         """Large profit + downtrend should generate take-profit alert."""
-        positions = [self._make_position(
-            pnl_pct=25.0,
-            trend="下降",
-        )]
+        positions = [
+            self._make_position(
+                pnl_pct=25.0,
+                trend="下降",
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         assert len(alerts) >= 1
         profit_alerts = [a for a in alerts if a["action"] == "利確検討"]
@@ -217,20 +230,24 @@ class TestComputeSellAlerts:
 
     def test_profit_without_downtrend_no_alert(self):
         """Large profit + uptrend should NOT generate take-profit alert."""
-        positions = [self._make_position(
-            pnl_pct=25.0,
-            trend="上昇",
-        )]
+        positions = [
+            self._make_position(
+                pnl_pct=25.0,
+                trend="上昇",
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         assert len(alerts) == 0
 
     def test_recent_death_cross_generates_warning(self):
         """Recent death cross (<=10 days) should generate warning."""
-        positions = [self._make_position(
-            cross_signal="death_cross",
-            days_since_cross=5,
-            cross_date="2026-02-15",
-        )]
+        positions = [
+            self._make_position(
+                cross_signal="death_cross",
+                days_since_cross=5,
+                cross_date="2026-02-15",
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         assert len(alerts) >= 1
         cross_alerts = [a for a in alerts if "トレンド転換" in a["action"]]
@@ -238,23 +255,27 @@ class TestComputeSellAlerts:
 
     def test_old_death_cross_no_alert(self):
         """Old death cross (>10 days) should NOT generate an alert on its own."""
-        positions = [self._make_position(
-            cross_signal="death_cross",
-            days_since_cross=30,
-            cross_date="2026-01-20",
-        )]
+        positions = [
+            self._make_position(
+                cross_signal="death_cross",
+                days_since_cross=30,
+                cross_date="2026-01-20",
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         cross_alerts = [a for a in alerts if "トレンド転換" in a.get("action", "")]
         assert len(cross_alerts) == 0
 
     def test_death_cross_skipped_for_exit(self):
         """Death cross alert should be skipped if EXIT already triggered."""
-        positions = [self._make_position(
-            alert_level=ALERT_EXIT,
-            alert_reasons=["デッドクロス"],
-            cross_signal="death_cross",
-            days_since_cross=3,
-        )]
+        positions = [
+            self._make_position(
+                alert_level=ALERT_EXIT,
+                alert_reasons=["デッドクロス"],
+                cross_signal="death_cross",
+                days_since_cross=3,
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         # Only the EXIT alert, no duplicate death cross
         assert len(alerts) == 1
@@ -262,10 +283,12 @@ class TestComputeSellAlerts:
 
     def test_value_trap_generates_warning(self):
         """Value trap detection should generate warning."""
-        positions = [self._make_position(
-            value_trap=True,
-            value_trap_reasons=["低PER + EPS減少"],
-        )]
+        positions = [
+            self._make_position(
+                value_trap=True,
+                value_trap_reasons=["低PER + EPS減少"],
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         trap_alerts = [a for a in alerts if "バリュートラップ" in a["action"]]
         assert len(trap_alerts) == 1
@@ -297,15 +320,19 @@ class TestComputeSellAlerts:
         """Alerts should be sorted: critical > warning > info."""
         positions = [
             self._make_position(
-                symbol="A", name="A Corp", rsi=25.0,
+                symbol="A",
+                name="A Corp",
+                rsi=25.0,
             ),
             self._make_position(
-                symbol="B", name="B Corp",
+                symbol="B",
+                name="B Corp",
                 alert_level=ALERT_EXIT,
                 alert_reasons=["EXIT"],
             ),
             self._make_position(
-                symbol="C", name="C Corp",
+                symbol="C",
+                name="C Corp",
                 value_trap=True,
                 value_trap_reasons=["trap"],
             ),
@@ -315,20 +342,19 @@ class TestComputeSellAlerts:
         expected_order = ["critical", "warning", "info"]
         # Each category should come before the next
         for i in range(len(urgencies) - 1):
-            assert (
-                expected_order.index(urgencies[i])
-                <= expected_order.index(urgencies[i + 1])
-            )
+            assert expected_order.index(urgencies[i]) <= expected_order.index(urgencies[i + 1])
 
     def test_multiple_alerts_for_same_stock(self):
         """A stock with multiple conditions can have multiple alerts."""
-        positions = [self._make_position(
-            pnl_pct=25.0,
-            trend="下降",
-            value_trap=True,
-            value_trap_reasons=["low PER + declining EPS"],
-            rsi=28.0,
-        )]
+        positions = [
+            self._make_position(
+                pnl_pct=25.0,
+                trend="下降",
+                value_trap=True,
+                value_trap_reasons=["low PER + declining EPS"],
+                rsi=28.0,
+            )
+        ]
         alerts = _compute_sell_alerts(positions)
         # Should have profit, value_trap, and RSI alerts
         assert len(alerts) >= 3
@@ -342,6 +368,7 @@ class TestComputeSellAlerts:
 # ---------------------------------------------------------------------------
 # Tests for run_dashboard_health_check (with mocks)
 # ---------------------------------------------------------------------------
+
 
 class TestRunDashboardHealthCheck:
     """Integration tests with mocked external calls."""
@@ -440,16 +467,25 @@ class TestRunDashboardHealthCheck:
         """Multiple stocks should all be checked."""
         mock_load.return_value = [
             {
-                "symbol": "7203.T", "shares": 100, "cost_price": 2850.0,
-                "cost_currency": "JPY", "memo": "トヨタ",
+                "symbol": "7203.T",
+                "shares": 100,
+                "cost_price": 2850.0,
+                "cost_currency": "JPY",
+                "memo": "トヨタ",
             },
             {
-                "symbol": "AAPL", "shares": 10, "cost_price": 230.0,
-                "cost_currency": "USD", "memo": "Apple",
+                "symbol": "AAPL",
+                "shares": 10,
+                "cost_price": 230.0,
+                "cost_currency": "USD",
+                "memo": "Apple",
             },
             {
-                "symbol": "JPY.CASH", "shares": 1, "cost_price": 1000000.0,
-                "cost_currency": "JPY", "memo": "現金",
+                "symbol": "JPY.CASH",
+                "shares": 1,
+                "cost_price": 1000000.0,
+                "cost_currency": "JPY",
+                "memo": "現金",
             },
         ]
         mock_yc.get_price_history.return_value = _make_uptrend_hist()
@@ -544,15 +580,34 @@ class TestRunDashboardHealthCheck:
         pos = result["positions"][0]
 
         required_fields = [
-            "symbol", "name", "shares", "cost_price", "current_price",
-            "pnl_pct", "trend", "rsi", "sma50", "sma200",
-            "price_above_sma50", "price_above_sma200",
-            "cross_signal", "days_since_cross", "cross_date",
-            "change_quality", "change_score", "indicators",
-            "alert_level", "alert_emoji", "alert_label", "alert_reasons",
-            "long_term_label", "long_term_summary",
-            "value_trap", "value_trap_reasons",
-            "return_stability", "return_stability_emoji",
+            "symbol",
+            "name",
+            "shares",
+            "cost_price",
+            "current_price",
+            "pnl_pct",
+            "trend",
+            "rsi",
+            "sma50",
+            "sma200",
+            "price_above_sma50",
+            "price_above_sma200",
+            "cross_signal",
+            "days_since_cross",
+            "cross_date",
+            "change_quality",
+            "change_score",
+            "indicators",
+            "alert_level",
+            "alert_emoji",
+            "alert_label",
+            "alert_reasons",
+            "long_term_label",
+            "long_term_summary",
+            "value_trap",
+            "value_trap_reasons",
+            "return_stability",
+            "return_stability_emoji",
         ]
         for field in required_fields:
             assert field in pos, f"Missing field: {field}"

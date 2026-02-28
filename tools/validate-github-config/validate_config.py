@@ -27,8 +27,15 @@ except ImportError:
 # Why: Copilot agents support a fixed set of tool identifiers.
 # How: Maintained as a set for O(1) lookup during validation.
 VALID_AGENT_TOOLS: set[str] = {
-    "read", "edit", "execute", "search", "problems",
-    "usages", "changes", "web", "todo",
+    "read",
+    "edit",
+    "execute",
+    "search",
+    "problems",
+    "usages",
+    "changes",
+    "web",
+    "todo",
 }
 
 # Why: Prompt files share a subset of agent tools.
@@ -36,6 +43,7 @@ VALID_PROMPT_TOOLS: set[str] = VALID_AGENT_TOOLS
 
 
 # -- Types -------------------------------------------------------------------
+
 
 class ValidationResult:
     """Accumulate validation errors and warnings.
@@ -77,14 +85,12 @@ class ValidationResult:
             lines.extend(self.errors)
         total = len(self.errors) + len(self.warnings)
         verdict = "PASS" if self.is_valid else "FAIL"
-        lines.append(
-            f"\n{verdict}: {len(self.errors)} error(s), "
-            f"{len(self.warnings)} warning(s) in {total} finding(s)"
-        )
+        lines.append(f"\n{verdict}: {len(self.errors)} error(s), {len(self.warnings)} warning(s) in {total} finding(s)")
         return "\n".join(lines)
 
 
 # -- Frontmatter parsing ----------------------------------------------------
+
 
 def parse_frontmatter(file_path: Path) -> dict | None:
     """Extract YAML frontmatter from a Markdown file.
@@ -106,6 +112,7 @@ def parse_frontmatter(file_path: Path) -> dict | None:
 
 
 # -- Agent validation --------------------------------------------------------
+
 
 def validate_agents(
     github_dir: Path,
@@ -197,6 +204,7 @@ def validate_handoffs(
 
 # -- Prompt validation -------------------------------------------------------
 
+
 def validate_prompts(
     github_dir: Path,
     agent_data: dict[str, dict],
@@ -251,6 +259,7 @@ def validate_prompts(
 
 # -- Hooks validation --------------------------------------------------------
 
+
 def validate_hooks(
     github_dir: Path,
     result: ValidationResult,
@@ -284,6 +293,7 @@ def validate_hooks(
 
 
 # -- Settings validation -----------------------------------------------------
+
 
 def validate_settings(
     github_dir: Path,
@@ -326,6 +336,7 @@ def validate_settings(
 
 
 # -- Entry point -------------------------------------------------------------
+
 
 def validate_all(repo_root: Path) -> ValidationResult:
     """Run all validations against a repository root.

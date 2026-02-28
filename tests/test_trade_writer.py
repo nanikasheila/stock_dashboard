@@ -1,9 +1,8 @@
 """Tests for components.trade_writer.record_trade()."""
 
 import sys
-from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,13 +11,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from components.trade_writer import record_trade
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 import tempfile
+
+from components.trade_writer import record_trade
+
 _DUMMY_CSV = str(Path(tempfile.gettempdir()) / "portfolio.csv")
 _DUMMY_JSON_PATH = "data/history/trade/2026-01-01_buy_VTI.json"
 
@@ -70,9 +69,7 @@ def test_record_trade_buy_calls_save_trade_and_add_position(
 @patch("components.trade_writer._acquire_csv_lock")
 @patch("components.trade_writer.add_position")
 @patch("components.trade_writer._save_trade")
-def test_record_trade_buy_returns_success_message(
-    mock_save_trade, mock_add_position, mock_acquire_lock, _mock_cash
-):
+def test_record_trade_buy_returns_success_message(mock_save_trade, mock_add_position, mock_acquire_lock, _mock_cash):
     # Arrange
     mock_save_trade.return_value = _DUMMY_JSON_PATH
     mock_add_position.return_value = {"symbol": "VTI", "shares": 10}
@@ -167,8 +164,10 @@ def test_record_trade_transfer_only_calls_save_trade(mock_save_trade):
     mock_save_trade.return_value = _DUMMY_JSON_PATH
 
     # Act
-    with patch("components.trade_writer.add_position") as mock_add, \
-         patch("components.trade_writer.sell_position") as mock_sell:
+    with (
+        patch("components.trade_writer.add_position") as mock_add,
+        patch("components.trade_writer.sell_position") as mock_sell,
+    ):
         result = record_trade(
             symbol="CASH_JPY",
             trade_type="transfer",
@@ -235,12 +234,10 @@ def test_record_trade_invalid_trade_type_raises_value_error():
 @patch("components.trade_writer._acquire_csv_lock")
 @patch("components.trade_writer.add_position")
 @patch("components.trade_writer._save_trade")
-def test_record_trade_buy_csv_failure_raises_runtime_error(
-    mock_save_trade, mock_add_position, mock_acquire_lock
-):
+def test_record_trade_buy_csv_failure_raises_runtime_error(mock_save_trade, mock_add_position, mock_acquire_lock):
     # Arrange: JSON save succeeds, CSV update raises an unexpected error
     mock_save_trade.return_value = _DUMMY_JSON_PATH
-    mock_add_position.side_effect = IOError("disk full")
+    mock_add_position.side_effect = OSError("disk full")
     mock_acquire_lock.return_value = _make_lock_mock()
 
     # Act / Assert
@@ -259,12 +256,10 @@ def test_record_trade_buy_csv_failure_raises_runtime_error(
 @patch("components.trade_writer._acquire_csv_lock")
 @patch("components.trade_writer.sell_position")
 @patch("components.trade_writer._save_trade")
-def test_record_trade_sell_csv_failure_raises_runtime_error(
-    mock_save_trade, mock_sell_position, mock_acquire_lock
-):
+def test_record_trade_sell_csv_failure_raises_runtime_error(mock_save_trade, mock_sell_position, mock_acquire_lock):
     # Arrange: JSON save succeeds, sell_position raises unexpected error
     mock_save_trade.return_value = _DUMMY_JSON_PATH
-    mock_sell_position.side_effect = IOError("disk full")
+    mock_sell_position.side_effect = OSError("disk full")
     mock_acquire_lock.return_value = _make_lock_mock()
 
     # Act / Assert
@@ -288,9 +283,7 @@ def test_record_trade_sell_csv_failure_raises_runtime_error(
 @patch("components.trade_writer._acquire_csv_lock")
 @patch("components.trade_writer.sell_position")
 @patch("components.trade_writer._save_trade")
-def test_record_trade_sell_over_holding_propagates_value_error(
-    mock_save_trade, mock_sell_position, mock_acquire_lock
-):
+def test_record_trade_sell_over_holding_propagates_value_error(mock_save_trade, mock_sell_position, mock_acquire_lock):
     # Arrange
     mock_save_trade.return_value = _DUMMY_JSON_PATH
     mock_sell_position.side_effect = ValueError("保有株数を超えています")
@@ -415,9 +408,7 @@ def test_record_trade_buy_usd_updates_cash_with_settlement_usd(
 @patch("components.trade_writer.update_cash_position")
 @patch("components.trade_writer.sell_position")
 @patch("components.trade_writer._save_trade")
-def test_record_trade_sell_jpy_adds_cash(
-    mock_save_trade, mock_sell_position, mock_update_cash, mock_acquire_lock
-):
+def test_record_trade_sell_jpy_adds_cash(mock_save_trade, mock_sell_position, mock_update_cash, mock_acquire_lock):
     """sell・JPY・settlement_jpy 指定ありの場合、+settlement_jpy で預り金が更新される."""
     mock_save_trade.return_value = _DUMMY_JSON_PATH
     mock_sell_position.return_value = {"symbol": "7803.T", "shares": 0}
@@ -530,7 +521,7 @@ def test_record_trade_cash_update_failure_raises_runtime_error(
     """キャッシュ更新失敗時に RuntimeError がスローされる."""
     mock_save_trade.return_value = _DUMMY_JSON_PATH
     mock_add_position.return_value = {"symbol": "VTI", "shares": 10}
-    mock_update_cash.side_effect = IOError("disk full")
+    mock_update_cash.side_effect = OSError("disk full")
     mock_acquire_lock.return_value = _make_lock_mock()
 
     with pytest.raises(RuntimeError, match="ポートフォリオCSVの更新に失敗"):
