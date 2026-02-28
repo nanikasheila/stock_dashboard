@@ -6,7 +6,7 @@ import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 import yfinance as yf
@@ -26,13 +26,13 @@ def _cache_path(symbol: str) -> Path:
     return CACHE_DIR / f"{safe_name}.json"
 
 
-def _read_cache(symbol: str) -> Optional[dict]:
+def _read_cache(symbol: str) -> dict | None:
     """Read cached data if it exists and is still valid."""
     path = _cache_path(symbol)
     if not path.exists():
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         cached_at = datetime.fromisoformat(data.get("_cached_at", ""))
         if datetime.now() - cached_at > timedelta(hours=CACHE_TTL_HOURS):
@@ -65,7 +65,7 @@ def _safe_get(info: dict, key: str) -> Any:
         return None
 
 
-def _normalize_ratio(value: Any) -> Optional[float]:
+def _normalize_ratio(value: Any) -> float | None:
     """Convert yfinance percentage value to ratio.
 
     yfinance returns dividendYield as a percentage (e.g. 3.87 for 3.87%,
@@ -111,7 +111,7 @@ def _sanitize_anomalies(data: dict) -> dict:
     return data
 
 
-def get_stock_info(symbol: str) -> Optional[dict]:
+def get_stock_info(symbol: str) -> dict | None:
     """Fetch basic stock information for a single symbol.
 
     Returns a dict with standardized keys, or None if the fetch fails entirely.
@@ -175,12 +175,12 @@ def get_stock_info(symbol: str) -> Optional[dict]:
         return None
 
 
-def get_multiple_stocks(symbols: list[str]) -> dict[str, Optional[dict]]:
+def get_multiple_stocks(symbols: list[str]) -> dict[str, dict | None]:
     """Fetch stock info for multiple symbols with a 1-second delay between requests.
 
     Returns a dict mapping symbol -> stock info (or None on failure).
     """
-    results: dict[str, Optional[dict]] = {}
+    results: dict[str, dict | None] = {}
     for i, symbol in enumerate(symbols):
         results[symbol] = get_stock_info(symbol)
         # Wait 1 second between requests (skip after the last one)
@@ -193,19 +193,20 @@ def get_multiple_stocks(symbols: list[str]) -> dict[str, Optional[dict]]:
 # Detail cache helpers
 # ---------------------------------------------------------------------------
 
+
 def _detail_cache_path(symbol: str) -> Path:
     """Return the detail-cache file path for a given symbol."""
     safe_name = symbol.replace(".", "_").replace("/", "_")
     return CACHE_DIR / f"{safe_name}_detail.json"
 
 
-def _read_detail_cache(symbol: str) -> Optional[dict]:
+def _read_detail_cache(symbol: str) -> dict | None:
     """Read detail-cached data if it exists and is still valid (24h TTL)."""
     path = _detail_cache_path(symbol)
     if not path.exists():
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         cached_at = datetime.fromisoformat(data.get("_cached_at", ""))
         if datetime.now() - cached_at > timedelta(hours=CACHE_TTL_HOURS):
@@ -224,7 +225,7 @@ def _write_detail_cache(symbol: str, data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def _try_get_field(df: Any, field_names: list[str]) -> Optional[float]:
+def _try_get_field(df: Any, field_names: list[str]) -> float | None:
     """Try to extract a numeric value from a DataFrame row using multiple
     possible field names.  Returns None if the DataFrame is empty or none of
     the names exist.
@@ -271,9 +272,7 @@ def _try_get_history(df, field_names: list[str], max_periods: int = 4) -> list[f
         return []
 
 
-def _build_dividend_history_from_actions(
-    ticker, shares_outstanding, max_years: int = 4
-) -> tuple:
+def _build_dividend_history_from_actions(ticker, shares_outstanding, max_years: int = 4) -> tuple:
     """Build dividend history from ticker.dividends as a fallback (KIK-388).
 
     When cashflow does not contain dividend payment history, use per-share
@@ -322,7 +321,8 @@ def _build_dividend_history_from_actions(
 # get_stock_detail
 # ---------------------------------------------------------------------------
 
-def get_stock_detail(symbol: str) -> Optional[dict]:
+
+def get_stock_detail(symbol: str) -> dict | None:
     """Fetch detailed stock information including financial statements.
 
     Extends the base data from ``get_stock_info`` with price history,
@@ -346,7 +346,7 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         ticker = yf.Ticker(symbol)
 
         # --- Price history (2 years for ~24 monthly returns) ---
-        price_history: Optional[list[float]] = None
+        price_history: list[float] | None = None
         try:
             hist = ticker.history(period="2y")
             if hist is not None and not hist.empty and "Close" in hist.columns:
@@ -355,68 +355,92 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
             logger.debug("Failed to fetch price history for %s: %s", symbol, exc)
 
         # --- Balance sheet: equity ratio, total_assets, equity_history ---
-        equity_ratio: Optional[float] = None
-        total_assets: Optional[float] = None
+        equity_ratio: float | None = None
+        total_assets: float | None = None
         equity_history: list[float] = []
         try:
             bs = ticker.balance_sheet
             if bs is not None and not bs.empty:
                 col = bs.iloc[:, 0]  # most recent column
-                equity = _try_get_field(bs, [
-                    "Stockholders Equity",
-                    "Total Stockholder Equity",
-                    "Stockholders' Equity",
-                    "StockholdersEquity",
-                    "Total Equity Gross Minority Interest",
-                ])
-                total_assets = _try_get_field(bs, [
-                    "Total Assets",
-                    "TotalAssets",
-                ])
+                equity = _try_get_field(
+                    bs,
+                    [
+                        "Stockholders Equity",
+                        "Total Stockholder Equity",
+                        "Stockholders' Equity",
+                        "StockholdersEquity",
+                        "Total Equity Gross Minority Interest",
+                    ],
+                )
+                total_assets = _try_get_field(
+                    bs,
+                    [
+                        "Total Assets",
+                        "TotalAssets",
+                    ],
+                )
                 if equity is not None and total_assets is not None and total_assets != 0:
                     equity_ratio = float(equity / total_assets)
 
                 # Multi-period equity history for ROE trend analysis
-                equity_history = _try_get_history(bs, [
-                    "Stockholders Equity",
-                    "Total Stockholder Equity",
-                    "Stockholders' Equity",
-                    "StockholdersEquity",
-                    "Total Equity Gross Minority Interest",
-                ])
+                equity_history = _try_get_history(
+                    bs,
+                    [
+                        "Stockholders Equity",
+                        "Total Stockholder Equity",
+                        "Stockholders' Equity",
+                        "StockholdersEquity",
+                        "Total Equity Gross Minority Interest",
+                    ],
+                )
         except Exception as exc:
             logger.debug("Failed to fetch balance sheet for %s: %s", symbol, exc)
 
         # --- Cash flow ---
-        operating_cashflow: Optional[float] = None
-        fcf: Optional[float] = None
-        dividend_paid: Optional[float] = None
-        stock_repurchase: Optional[float] = None
+        operating_cashflow: float | None = None
+        fcf: float | None = None
+        dividend_paid: float | None = None
+        stock_repurchase: float | None = None
         try:
             cf = ticker.cashflow
-            operating_cashflow = _try_get_field(cf, [
-                "Operating Cash Flow",
-                "Total Cash From Operating Activities",
-                "Cash Flow From Continuing Operating Activities",
-            ])
-            fcf = _try_get_field(cf, [
-                "Free Cash Flow",
-                "FreeCashFlow",
-            ])
+            operating_cashflow = _try_get_field(
+                cf,
+                [
+                    "Operating Cash Flow",
+                    "Total Cash From Operating Activities",
+                    "Cash Flow From Continuing Operating Activities",
+                ],
+            )
+            fcf = _try_get_field(
+                cf,
+                [
+                    "Free Cash Flow",
+                    "FreeCashFlow",
+                ],
+            )
             # KIK-375: Shareholder return data
-            dividend_paid = _try_get_field(cf, [
-                "Common Stock Dividend Paid",
-                "Cash Dividends Paid",
-                "Payment Of Dividends",
-            ])
-            stock_repurchase = _try_get_field(cf, [
-                "Repurchase Of Capital Stock",
-                "Common Stock Payments",
-            ])
+            dividend_paid = _try_get_field(
+                cf,
+                [
+                    "Common Stock Dividend Paid",
+                    "Cash Dividends Paid",
+                    "Payment Of Dividends",
+                ],
+            )
+            stock_repurchase = _try_get_field(
+                cf,
+                [
+                    "Repurchase Of Capital Stock",
+                    "Common Stock Payments",
+                ],
+            )
             if stock_repurchase is None:
-                net_issuance = _try_get_field(cf, [
-                    "Net Common Stock Issuance",
-                ])
+                net_issuance = _try_get_field(
+                    cf,
+                    [
+                        "Net Common Stock Issuance",
+                    ],
+                )
                 if net_issuance is not None and net_issuance < 0:
                     stock_repurchase = net_issuance
 
@@ -454,43 +478,50 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         # KIK-388: Fallback to ticker.dividends when cashflow dividend history is sparse
         if len(dividend_paid_history) < 2:
             shares_out = _safe_get(ticker.info, "sharesOutstanding")
-            fb_amounts, fb_years = _build_dividend_history_from_actions(
-                ticker, shares_out
-            )
+            fb_amounts, fb_years = _build_dividend_history_from_actions(ticker, shares_out)
             if len(fb_amounts) >= 2:
                 dividend_paid_history = fb_amounts
                 if not cashflow_fiscal_years:
                     cashflow_fiscal_years = fb_years
 
         # --- Income statement: EPS, net income, revenue/NI history ---
-        eps_current: Optional[float] = None
-        eps_previous: Optional[float] = None
-        eps_growth: Optional[float] = None
-        net_income_stmt: Optional[float] = None
+        eps_current: float | None = None
+        eps_previous: float | None = None
+        eps_growth: float | None = None
+        net_income_stmt: float | None = None
         revenue_history: list[float] = []
         net_income_history: list[float] = []
         try:
             inc = ticker.income_stmt
             if inc is not None and not inc.empty:
                 # Net income from most recent period
-                net_income_stmt = _try_get_field(inc, [
-                    "Net Income",
-                    "NetIncome",
-                    "Net Income Common Stockholders",
-                ])
+                net_income_stmt = _try_get_field(
+                    inc,
+                    [
+                        "Net Income",
+                        "NetIncome",
+                        "Net Income Common Stockholders",
+                    ],
+                )
 
                 # Multi-period revenue history for acceleration analysis
-                revenue_history = _try_get_history(inc, [
-                    "Total Revenue",
-                    "Revenue",
-                ])
+                revenue_history = _try_get_history(
+                    inc,
+                    [
+                        "Total Revenue",
+                        "Revenue",
+                    ],
+                )
 
                 # Multi-period net income history for ROE trend analysis
-                net_income_history = _try_get_history(inc, [
-                    "Net Income",
-                    "NetIncome",
-                    "Net Income Common Stockholders",
-                ])
+                net_income_history = _try_get_history(
+                    inc,
+                    [
+                        "Net Income",
+                        "NetIncome",
+                        "Net Income Common Stockholders",
+                    ],
+                )
 
                 # Diluted EPS – latest two years for growth calculation
                 eps_field_name = None
@@ -509,26 +540,20 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                         val = eps_row.iloc[1]
                         if val is not None and val == val:
                             eps_previous = float(val)
-                    if (
-                        eps_current is not None
-                        and eps_previous is not None
-                        and eps_previous != 0
-                    ):
-                        eps_growth = float(
-                            (eps_current - eps_previous) / abs(eps_previous)
-                        )
+                    if eps_current is not None and eps_previous is not None and eps_previous != 0:
+                        eps_growth = float((eps_current - eps_previous) / abs(eps_previous))
         except Exception as exc:
             logger.debug("Failed to fetch income statement for %s: %s", symbol, exc)
 
         # --- Additional info fields ---
-        total_debt: Optional[float] = None
-        ebitda: Optional[float] = None
-        target_high_price: Optional[float] = None
-        target_low_price: Optional[float] = None
-        target_mean_price: Optional[float] = None
-        number_of_analyst_opinions: Optional[int] = None
-        recommendation_mean: Optional[float] = None
-        forward_eps: Optional[float] = None
+        total_debt: float | None = None
+        ebitda: float | None = None
+        target_high_price: float | None = None
+        target_low_price: float | None = None
+        target_mean_price: float | None = None
+        number_of_analyst_opinions: int | None = None
+        recommendation_mean: float | None = None
+        forward_eps: float | None = None
         try:
             info = ticker.info
             total_debt = _safe_get(info, "totalDebt")
@@ -537,7 +562,9 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
             target_low_price = _safe_get(info, "targetLowPrice")
             target_mean_price = _safe_get(info, "targetMeanPrice")
             number_of_analyst_opinions_val = _safe_get(info, "numberOfAnalystOpinions")
-            number_of_analyst_opinions = int(number_of_analyst_opinions_val) if number_of_analyst_opinions_val is not None else None
+            number_of_analyst_opinions = (
+                int(number_of_analyst_opinions_val) if number_of_analyst_opinions_val is not None else None
+            )
             recommendation_mean = _safe_get(info, "recommendationMean")
             forward_eps = _safe_get(info, "forwardEps")
             # Fallback: use trailingEps from info when income_stmt
@@ -551,37 +578,39 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
 
         # 4. Merge into base dict
         result = dict(base)  # shallow copy to avoid mutating cached base
-        result.update({
-            "price_history": price_history,
-            "equity_ratio": equity_ratio,
-            "operating_cashflow": operating_cashflow,
-            "net_income_stmt": net_income_stmt,
-            "fcf": fcf,
-            "total_debt": total_debt,
-            "ebitda": ebitda,
-            # Analyst fields (KIK-359)
-            "target_high_price": target_high_price,
-            "target_low_price": target_low_price,
-            "target_mean_price": target_mean_price,
-            "number_of_analyst_opinions": number_of_analyst_opinions,
-            "recommendation_mean": recommendation_mean,
-            "forward_eps": forward_eps,
-            "eps_current": eps_current,
-            "eps_previous": eps_previous,
-            "eps_growth": eps_growth,
-            # Alpha signal fields (KIK-346)
-            "total_assets": total_assets,
-            "revenue_history": revenue_history,
-            "net_income_history": net_income_history,
-            # Shareholder return fields (KIK-375)
-            "dividend_paid": dividend_paid,
-            "stock_repurchase": stock_repurchase,
-            "equity_history": equity_history,
-            # Shareholder return history (KIK-380)
-            "dividend_paid_history": dividend_paid_history,
-            "stock_repurchase_history": stock_repurchase_history,
-            "cashflow_fiscal_years": cashflow_fiscal_years,
-        })
+        result.update(
+            {
+                "price_history": price_history,
+                "equity_ratio": equity_ratio,
+                "operating_cashflow": operating_cashflow,
+                "net_income_stmt": net_income_stmt,
+                "fcf": fcf,
+                "total_debt": total_debt,
+                "ebitda": ebitda,
+                # Analyst fields (KIK-359)
+                "target_high_price": target_high_price,
+                "target_low_price": target_low_price,
+                "target_mean_price": target_mean_price,
+                "number_of_analyst_opinions": number_of_analyst_opinions,
+                "recommendation_mean": recommendation_mean,
+                "forward_eps": forward_eps,
+                "eps_current": eps_current,
+                "eps_previous": eps_previous,
+                "eps_growth": eps_growth,
+                # Alpha signal fields (KIK-346)
+                "total_assets": total_assets,
+                "revenue_history": revenue_history,
+                "net_income_history": net_income_history,
+                # Shareholder return fields (KIK-375)
+                "dividend_paid": dividend_paid,
+                "stock_repurchase": stock_repurchase,
+                "equity_history": equity_history,
+                # Shareholder return history (KIK-380)
+                "dividend_paid_history": dividend_paid_history,
+                "stock_repurchase_history": stock_repurchase_history,
+                "cashflow_fiscal_years": cashflow_fiscal_years,
+            }
+        )
 
         # 5. Cache the result
         _write_detail_cache(symbol, result)
@@ -595,6 +624,7 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # EquityQuery-based screening via yf.screen()
 # ---------------------------------------------------------------------------
+
 
 def screen_stocks(
     query: EquityQuery,
@@ -650,8 +680,11 @@ def screen_stocks(
                 logger.info("Fetching page %d...", page)
 
             response = yf.screen(
-                query, size=page_size, offset=offset,
-                sortField=sort_field, sortAsc=sort_asc,
+                query,
+                size=page_size,
+                offset=offset,
+                sortField=sort_field,
+                sortAsc=sort_asc,
             )
             if response is None:
                 logger.warning("yf.screen() returned None")
@@ -693,7 +726,8 @@ def screen_stocks(
 # Price history for technical analysis
 # ---------------------------------------------------------------------------
 
-def get_price_history(symbol: str, period: str = "1y") -> Optional[pd.DataFrame]:
+
+def get_price_history(symbol: str, period: str = "1y") -> pd.DataFrame | None:
     """Fetch price history for technical analysis.
 
     Returns a pandas DataFrame with columns: Open, High, Low, Close, Volume.
@@ -722,8 +756,9 @@ def get_price_history(symbol: str, period: str = "1y") -> Optional[pd.DataFrame]
 
 
 def get_close_prices_batch(
-    symbols: list[str], period: str = "1y",
-) -> Optional[pd.DataFrame]:
+    symbols: list[str],
+    period: str = "1y",
+) -> pd.DataFrame | None:
     """Fetch Close prices for multiple symbols in a single batch request.
 
     Uses ``yf.download()`` for efficiency — one network round-trip for all
@@ -760,9 +795,7 @@ def get_close_prices_batch(
                     close_s = data["Close"]
                     if isinstance(close_s, pd.Series):
                         return close_s.to_frame(name=symbols[0])
-                    return close_s.rename(
-                        columns={close_s.columns[0]: symbols[0]}
-                    )
+                    return close_s.rename(columns={close_s.columns[0]: symbols[0]})
                 except (KeyError, IndexError):
                     pass
             if "Close" in data.columns:
@@ -779,7 +812,7 @@ def get_close_prices_batch(
             except KeyError:
                 pass
             # Alternative level arrangement (Ticker, Price)
-            result_frames: dict[str, "pd.Series"] = {}
+            result_frames: dict[str, pd.Series] = {}
             for sym in symbols:
                 try:
                     if sym in data.columns.get_level_values(0):
@@ -837,26 +870,30 @@ def get_macro_indicators() -> list[dict]:
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period="5d")
             if hist is None or hist.empty or "Close" not in hist.columns:
-                results.append({
-                    "name": name,
-                    "symbol": symbol,
-                    "price": None,
-                    "daily_change": None,
-                    "weekly_change": None,
-                    "is_point_diff": symbol in _POINT_DIFF_TICKERS,
-                })
+                results.append(
+                    {
+                        "name": name,
+                        "symbol": symbol,
+                        "price": None,
+                        "daily_change": None,
+                        "weekly_change": None,
+                        "is_point_diff": symbol in _POINT_DIFF_TICKERS,
+                    }
+                )
                 continue
 
             closes = hist["Close"].dropna()
             if len(closes) == 0:
-                results.append({
-                    "name": name,
-                    "symbol": symbol,
-                    "price": None,
-                    "daily_change": None,
-                    "weekly_change": None,
-                    "is_point_diff": symbol in _POINT_DIFF_TICKERS,
-                })
+                results.append(
+                    {
+                        "name": name,
+                        "symbol": symbol,
+                        "price": None,
+                        "daily_change": None,
+                        "weekly_change": None,
+                        "is_point_diff": symbol in _POINT_DIFF_TICKERS,
+                    }
+                )
                 continue
 
             latest = float(closes.iloc[-1])
@@ -879,14 +916,16 @@ def get_macro_indicators() -> list[dict]:
             elif oldest != 0:
                 weekly_change = (latest - oldest) / oldest
 
-            results.append({
-                "name": name,
-                "symbol": symbol,
-                "price": latest,
-                "daily_change": daily_change,
-                "weekly_change": weekly_change,
-                "is_point_diff": is_point,
-            })
+            results.append(
+                {
+                    "name": name,
+                    "symbol": symbol,
+                    "price": latest,
+                    "daily_change": daily_change,
+                    "weekly_change": weekly_change,
+                    "is_point_diff": is_point,
+                }
+            )
         except Exception as e:
             logger.warning("Error fetching macro indicator %s: %s", name, e)
             continue
@@ -897,6 +936,7 @@ def get_macro_indicators() -> list[dict]:
 # ---------------------------------------------------------------------------
 # News
 # ---------------------------------------------------------------------------
+
 
 def get_stock_news(symbol: str, count: int = 10) -> list[dict]:
     """Fetch recent news for a stock symbol.
@@ -937,8 +977,12 @@ def get_stock_news(symbol: str, count: int = 10) -> list[dict]:
 
             news_item = {
                 "title": content.get("title", "") if isinstance(content, dict) else item.get("title", ""),
-                "publisher": content.get("provider", {}).get("displayName", "") if isinstance(content, dict) else item.get("publisher", ""),
-                "link": content.get("canonicalUrl", {}).get("url", "") if isinstance(content, dict) else item.get("link", ""),
+                "publisher": content.get("provider", {}).get("displayName", "")
+                if isinstance(content, dict)
+                else item.get("publisher", ""),
+                "link": content.get("canonicalUrl", {}).get("url", "")
+                if isinstance(content, dict)
+                else item.get("link", ""),
                 "publish_time": str(publish_time) if publish_time else "",
             }
             results.append(news_item)

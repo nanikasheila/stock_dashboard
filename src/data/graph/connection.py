@@ -75,6 +75,7 @@ def _get_driver():
         return _driver
     try:
         from neo4j import GraphDatabase  # type: ignore[import]
+
         _driver = GraphDatabase.driver(_NEO4J_URI, auth=(_NEO4J_USER, _NEO4J_PASSWORD))
         return _driver
     except Exception:

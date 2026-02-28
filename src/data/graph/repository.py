@@ -13,7 +13,6 @@ from __future__ import annotations
 import json as _json
 import logging
 import re
-from typing import Optional
 
 from src.data.graph.connection import _get_driver, _get_mode
 from src.data.graph.schema import _set_embedding
@@ -24,6 +23,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _safe_id(text: str) -> str:
     """Make text safe for use in a node ID (replace non-alphanum with _).
@@ -51,6 +51,7 @@ def _truncate(text: str, max_len: int = 500) -> str:
 # Stock node
 # ---------------------------------------------------------------------------
 
+
 def merge_stock(symbol: str, name: str = "", sector: str = "", country: str = "") -> bool:
     """Create or update a Stock node.
 
@@ -67,9 +68,11 @@ def merge_stock(symbol: str, name: str = "", sector: str = "", country: str = ""
     try:
         with driver.session() as session:
             session.run(
-                "MERGE (s:Stock {symbol: $symbol}) "
-                "SET s.name = $name, s.sector = $sector, s.country = $country",
-                symbol=symbol, name=name, sector=sector, country=country,
+                "MERGE (s:Stock {symbol: $symbol}) SET s.name = $name, s.sector = $sector, s.country = $country",
+                symbol=symbol,
+                name=name,
+                sector=sector,
+                country=country,
             )
             if sector:
                 session.run(
@@ -77,7 +80,8 @@ def merge_stock(symbol: str, name: str = "", sector: str = "", country: str = ""
                     "WITH sec "
                     "MATCH (s:Stock {symbol: $symbol}) "
                     "MERGE (s)-[:IN_SECTOR]->(sec)",
-                    sector=sector, symbol=symbol,
+                    sector=sector,
+                    symbol=symbol,
                 )
         return True
     except Exception:
@@ -88,10 +92,15 @@ def merge_stock(symbol: str, name: str = "", sector: str = "", country: str = ""
 # Screen node
 # ---------------------------------------------------------------------------
 
+
 def merge_screen(
-    screen_date: str, preset: str, region: str, count: int,
+    screen_date: str,
+    preset: str,
+    region: str,
+    count: int,
     symbols: list[str],
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create a Screen node and SURFACED relationships to stocks.
 
@@ -112,16 +121,18 @@ def merge_screen(
                 "MERGE (sc:Screen {id: $id}) "
                 "SET sc.date = $date, sc.preset = $preset, "
                 "sc.region = $region, sc.count = $count",
-                id=screen_id, date=screen_date, preset=preset,
-                region=region, count=count,
+                id=screen_id,
+                date=screen_date,
+                preset=preset,
+                region=region,
+                count=count,
             )
             _set_embedding(session, "Screen", screen_id, semantic_summary, embedding)
             for sym in symbols:
                 session.run(
-                    "MATCH (sc:Screen {id: $screen_id}) "
-                    "MERGE (s:Stock {symbol: $symbol}) "
-                    "MERGE (sc)-[:SURFACED]->(s)",
-                    screen_id=screen_id, symbol=sym,
+                    "MATCH (sc:Screen {id: $screen_id}) MERGE (s:Stock {symbol: $symbol}) MERGE (sc)-[:SURFACED]->(s)",
+                    screen_id=screen_id,
+                    symbol=sym,
                 )
         return True
     except Exception:
@@ -132,9 +143,14 @@ def merge_screen(
 # Report node
 # ---------------------------------------------------------------------------
 
+
 def merge_report(
-    report_date: str, symbol: str, score: float, verdict: str,
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    report_date: str,
+    symbol: str,
+    score: float,
+    verdict: str,
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create a Report node and ANALYZED relationship.
 
@@ -154,14 +170,16 @@ def merge_report(
                 "MERGE (r:Report {id: $id}) "
                 "SET r.date = $date, r.symbol = $symbol, "
                 "r.score = $score, r.verdict = $verdict",
-                id=report_id, date=report_date, symbol=symbol,
-                score=score, verdict=verdict,
+                id=report_id,
+                date=report_date,
+                symbol=symbol,
+                score=score,
+                verdict=verdict,
             )
             session.run(
-                "MATCH (r:Report {id: $report_id}) "
-                "MERGE (s:Stock {symbol: $symbol}) "
-                "MERGE (r)-[:ANALYZED]->(s)",
-                report_id=report_id, symbol=symbol,
+                "MATCH (r:Report {id: $report_id}) MERGE (s:Stock {symbol: $symbol}) MERGE (r)-[:ANALYZED]->(s)",
+                report_id=report_id,
+                symbol=symbol,
             )
             _set_embedding(session, "Report", report_id, semantic_summary, embedding)
         return True
@@ -173,10 +191,17 @@ def merge_report(
 # Trade node
 # ---------------------------------------------------------------------------
 
+
 def merge_trade(
-    trade_date: str, trade_type: str, symbol: str,
-    shares: int, price: float, currency: str, memo: str = "",
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    trade_date: str,
+    trade_type: str,
+    symbol: str,
+    shares: int,
+    price: float,
+    currency: str,
+    memo: str = "",
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create a Trade node and BOUGHT/SOLD relationship.
 
@@ -198,15 +223,19 @@ def merge_trade(
                 "SET t.date = $date, t.type = $type, t.symbol = $symbol, "
                 "t.shares = $shares, t.price = $price, t.currency = $currency, "
                 "t.memo = $memo",
-                id=trade_id, date=trade_date, type=trade_type,
-                symbol=symbol, shares=shares, price=price,
-                currency=currency, memo=memo,
+                id=trade_id,
+                date=trade_date,
+                type=trade_type,
+                symbol=symbol,
+                shares=shares,
+                price=price,
+                currency=currency,
+                memo=memo,
             )
             session.run(
-                f"MATCH (t:Trade {{id: $trade_id}}) "
-                f"MERGE (s:Stock {{symbol: $symbol}}) "
-                f"MERGE (t)-[:{rel_type}]->(s)",
-                trade_id=trade_id, symbol=symbol,
+                f"MATCH (t:Trade {{id: $trade_id}}) MERGE (s:Stock {{symbol: $symbol}}) MERGE (t)-[:{rel_type}]->(s)",
+                trade_id=trade_id,
+                symbol=symbol,
             )
             _set_embedding(session, "Trade", trade_id, semantic_summary, embedding)
         return True
@@ -218,9 +247,13 @@ def merge_trade(
 # HealthCheck node
 # ---------------------------------------------------------------------------
 
+
 def merge_health(
-    health_date: str, summary: dict, symbols: list[str],
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    health_date: str,
+    summary: dict,
+    symbols: list[str],
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create a HealthCheck node and CHECKED relationships.
 
@@ -241,7 +274,8 @@ def merge_health(
                 "MERGE (h:HealthCheck {id: $id}) "
                 "SET h.date = $date, h.total = $total, "
                 "h.healthy = $healthy, h.exit_count = $exit_count",
-                id=health_id, date=health_date,
+                id=health_id,
+                date=health_date,
                 total=summary.get("total", 0),
                 healthy=summary.get("healthy", 0),
                 exit_count=summary.get("exit", 0),
@@ -251,7 +285,8 @@ def merge_health(
                     "MATCH (h:HealthCheck {id: $health_id}) "
                     "MERGE (s:Stock {symbol: $symbol}) "
                     "MERGE (h)-[:CHECKED]->(s)",
-                    health_id=health_id, symbol=sym,
+                    health_id=health_id,
+                    symbol=sym,
                 )
             _set_embedding(session, "HealthCheck", health_id, semantic_summary, embedding)
         return True
@@ -263,10 +298,16 @@ def merge_health(
 # Note node
 # ---------------------------------------------------------------------------
 
+
 def merge_note(
-    note_id: str, note_date: str, note_type: str, content: str,
-    symbol: Optional[str] = None, source: str = "",
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    note_id: str,
+    note_date: str,
+    note_type: str,
+    content: str,
+    symbol: str | None = None,
+    source: str = "",
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create a Note node and ABOUT relationship to a stock.
 
@@ -283,18 +324,18 @@ def merge_note(
     try:
         with driver.session() as session:
             session.run(
-                "MERGE (n:Note {id: $id}) "
-                "SET n.date = $date, n.type = $type, "
-                "n.content = $content, n.source = $source",
-                id=note_id, date=note_date, type=note_type,
-                content=content, source=source,
+                "MERGE (n:Note {id: $id}) SET n.date = $date, n.type = $type, n.content = $content, n.source = $source",
+                id=note_id,
+                date=note_date,
+                type=note_type,
+                content=content,
+                source=source,
             )
             if symbol:
                 session.run(
-                    "MATCH (n:Note {id: $note_id}) "
-                    "MERGE (s:Stock {symbol: $symbol}) "
-                    "MERGE (n)-[:ABOUT]->(s)",
-                    note_id=note_id, symbol=symbol,
+                    "MATCH (n:Note {id: $note_id}) MERGE (s:Stock {symbol: $symbol}) MERGE (n)-[:ABOUT]->(s)",
+                    note_id=note_id,
+                    symbol=symbol,
                 )
             _set_embedding(session, "Note", note_id, semantic_summary, embedding)
         return True
@@ -305,6 +346,7 @@ def merge_note(
 # ---------------------------------------------------------------------------
 # Theme tagging
 # ---------------------------------------------------------------------------
+
 
 def tag_theme(symbol: str, theme: str) -> bool:
     """Tag a stock with a theme.
@@ -320,11 +362,9 @@ def tag_theme(symbol: str, theme: str) -> bool:
     try:
         with driver.session() as session:
             session.run(
-                "MERGE (t:Theme {name: $theme}) "
-                "WITH t "
-                "MERGE (s:Stock {symbol: $symbol}) "
-                "MERGE (s)-[:HAS_THEME]->(t)",
-                theme=theme, symbol=symbol,
+                "MERGE (t:Theme {name: $theme}) WITH t MERGE (s:Stock {symbol: $symbol}) MERGE (s)-[:HAS_THEME]->(t)",
+                theme=theme,
+                symbol=symbol,
             )
         return True
     except Exception:
@@ -335,10 +375,14 @@ def tag_theme(symbol: str, theme: str) -> bool:
 # Research node (KIK-398)
 # ---------------------------------------------------------------------------
 
+
 def merge_research(
-    research_date: str, research_type: str, target: str,
+    research_date: str,
+    research_type: str,
+    target: str,
     summary: str = "",
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create a Research node and optionally RESEARCHED relationship to Stock.
 
@@ -362,15 +406,19 @@ def merge_research(
                 "MERGE (r:Research {id: $id}) "
                 "SET r.date = $date, r.research_type = $rtype, "
                 "r.target = $target, r.summary = $summary",
-                id=research_id, date=research_date, rtype=research_type,
-                target=target, summary=summary,
+                id=research_id,
+                date=research_date,
+                rtype=research_type,
+                target=target,
+                summary=summary,
             )
             if research_type in ("stock", "business"):
                 session.run(
                     "MATCH (r:Research {id: $research_id}) "
                     "MERGE (s:Stock {symbol: $symbol}) "
                     "MERGE (r)-[:RESEARCHED]->(s)",
-                    research_id=research_id, symbol=target,
+                    research_id=research_id,
+                    symbol=target,
                 )
             _set_embedding(session, "Research", research_id, semantic_summary, embedding)
         return True
@@ -382,10 +430,12 @@ def merge_research(
 # Watchlist node (KIK-398)
 # ---------------------------------------------------------------------------
 
+
 def merge_watchlist(
-    name: str, symbols: list[str],
+    name: str,
+    symbols: list[str],
     semantic_summary: str = "",
-    embedding: Optional[list[float]] = None,
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create a Watchlist node and BOOKMARKED relationships to stocks.
 
@@ -421,10 +471,9 @@ def merge_watchlist(
                     )
             for sym in symbols:
                 session.run(
-                    "MATCH (w:Watchlist {name: $name}) "
-                    "MERGE (s:Stock {symbol: $symbol}) "
-                    "MERGE (w)-[:BOOKMARKED]->(s)",
-                    name=name, symbol=sym,
+                    "MATCH (w:Watchlist {name: $name}) MERGE (s:Stock {symbol: $symbol}) MERGE (w)-[:BOOKMARKED]->(s)",
+                    name=name,
+                    symbol=sym,
                 )
         return True
     except Exception:
@@ -434,6 +483,7 @@ def merge_watchlist(
 # ---------------------------------------------------------------------------
 # Research SUPERSEDES chain (KIK-398)
 # ---------------------------------------------------------------------------
+
 
 def link_research_supersedes(research_type: str, target: str) -> bool:
     """Link Research nodes of same type+target in date order with SUPERSEDES.
@@ -457,7 +507,8 @@ def link_research_supersedes(research_type: str, target: str) -> bool:
                 "UNWIND range(0, size(nodes)-2) AS i "
                 "WITH nodes[i] AS a, nodes[i+1] AS b "
                 "MERGE (a)-[:SUPERSEDES]->(b)",
-                rtype=research_type, target=target,
+                rtype=research_type,
+                target=target,
             )
         return True
     except Exception:
@@ -467,6 +518,7 @@ def link_research_supersedes(research_type: str, target: str) -> bool:
 # ---------------------------------------------------------------------------
 # Portfolio sync (KIK-414)
 # ---------------------------------------------------------------------------
+
 
 def sync_portfolio(holdings: list[dict]) -> bool:
     """Sync portfolio CSV holdings to Neo4j HOLDS relationships.
@@ -524,8 +576,7 @@ def sync_portfolio(holdings: list[dict]) -> bool:
                 )
             else:
                 session.run(
-                    "MATCH (p:Portfolio {name: 'default'})-[r:HOLDS]->() "
-                    "DELETE r",
+                    "MATCH (p:Portfolio {name: 'default'})-[r:HOLDS]->() DELETE r",
                 )
         return True
     except Exception:
@@ -544,8 +595,7 @@ def is_held(symbol: str) -> bool:
     try:
         with driver.session() as session:
             result = session.run(
-                "MATCH (p:Portfolio {name: 'default'})-[:HOLDS]->(s:Stock {symbol: $symbol}) "
-                "RETURN count(*) AS cnt",
+                "MATCH (p:Portfolio {name: 'default'})-[:HOLDS]->(s:Stock {symbol: $symbol}) RETURN count(*) AS cnt",
                 symbol=symbol,
             )
             record = result.single()
@@ -566,10 +616,7 @@ def get_held_symbols() -> list[str]:
         return []
     try:
         with driver.session() as session:
-            result = session.run(
-                "MATCH (p:Portfolio {name: 'default'})-[:HOLDS]->(s:Stock) "
-                "RETURN s.symbol AS symbol"
-            )
+            result = session.run("MATCH (p:Portfolio {name: 'default'})-[:HOLDS]->(s:Stock) RETURN s.symbol AS symbol")
             return [r["symbol"] for r in result]
     except Exception:
         return []
@@ -579,10 +626,12 @@ def get_held_symbols() -> list[str]:
 # MarketContext node (KIK-399)
 # ---------------------------------------------------------------------------
 
+
 def merge_market_context(
-    context_date: str, indices: list[dict],
+    context_date: str,
+    indices: list[dict],
     semantic_summary: str = "",
-    embedding: Optional[list[float]] = None,
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create/update a MarketContext node with index snapshots.
 
@@ -602,8 +651,7 @@ def merge_market_context(
     try:
         with driver.session() as session:
             session.run(
-                "MERGE (m:MarketContext {id: $id}) "
-                "SET m.date = $date, m.indices = $indices",
+                "MERGE (m:MarketContext {id: $id}) SET m.date = $date, m.indices = $indices",
                 id=context_id,
                 date=context_date,
                 indices=_json.dumps(indices, ensure_ascii=False),
@@ -617,6 +665,7 @@ def merge_market_context(
 # ---------------------------------------------------------------------------
 # Clear all (KIK-398 --rebuild)
 # ---------------------------------------------------------------------------
+
 
 def clear_all() -> bool:
     """Delete all nodes and relationships. Used for --rebuild.
@@ -640,11 +689,20 @@ def clear_all() -> bool:
 # Full-mode CRUD (KIK-413)
 # ---------------------------------------------------------------------------
 
+
 def merge_report_full(
-    report_date: str, symbol: str, score: float, verdict: str,
-    price: float = 0, per: float = 0, pbr: float = 0,
-    dividend_yield: float = 0, roe: float = 0, market_cap: float = 0,
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    report_date: str,
+    symbol: str,
+    score: float,
+    verdict: str,
+    price: float = 0,
+    per: float = 0,
+    pbr: float = 0,
+    dividend_yield: float = 0,
+    roe: float = 0,
+    market_cap: float = 0,
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Extend an existing Report node with full valuation properties (KIK-413).
 
@@ -657,10 +715,8 @@ def merge_report_full(
          separate SET for numeric fields. Falls back to summary mode gracefully.
     """
     if _get_mode() != "full":
-        return merge_report(report_date, symbol, score, verdict,
-                            semantic_summary=semantic_summary, embedding=embedding)
-    merge_report(report_date, symbol, score, verdict,
-                 semantic_summary=semantic_summary, embedding=embedding)
+        return merge_report(report_date, symbol, score, verdict, semantic_summary=semantic_summary, embedding=embedding)
+    merge_report(report_date, symbol, score, verdict, semantic_summary=semantic_summary, embedding=embedding)
     driver = _get_driver()
     if driver is None:
         return False
@@ -671,9 +727,12 @@ def merge_report_full(
                 "MATCH (r:Report {id: $id}) "
                 "SET r.price = $price, r.per = $per, r.pbr = $pbr, "
                 "r.dividend_yield = $div, r.roe = $roe, r.market_cap = $mcap",
-                id=report_id, price=float(price or 0),
-                per=float(per or 0), pbr=float(pbr or 0),
-                div=float(dividend_yield or 0), roe=float(roe or 0),
+                id=report_id,
+                price=float(price or 0),
+                per=float(per or 0),
+                pbr=float(pbr or 0),
+                div=float(dividend_yield or 0),
+                roe=float(roe or 0),
                 mcap=float(market_cap or 0),
             )
         return True
@@ -682,12 +741,15 @@ def merge_report_full(
 
 
 def merge_research_full(
-    research_date: str, research_type: str, target: str,
+    research_date: str,
+    research_type: str,
+    target: str,
     summary: str = "",
-    grok_research: Optional[dict] = None,
-    x_sentiment: Optional[dict] = None,
-    news: Optional[list] = None,
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    grok_research: dict | None = None,
+    x_sentiment: dict | None = None,
+    news: list | None = None,
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create Research node with semantic sub-nodes (KIK-413).
 
@@ -702,10 +764,12 @@ def merge_research_full(
          batch-limited list iteration to avoid runaway node counts.
     """
     if _get_mode() != "full":
-        return merge_research(research_date, research_type, target, summary,
-                              semantic_summary=semantic_summary, embedding=embedding)
-    merge_research(research_date, research_type, target, summary,
-                   semantic_summary=semantic_summary, embedding=embedding)
+        return merge_research(
+            research_date, research_type, target, summary, semantic_summary=semantic_summary, embedding=embedding
+        )
+    merge_research(
+        research_date, research_type, target, summary, semantic_summary=semantic_summary, embedding=embedding
+    )
     driver = _get_driver()
     if driver is None:
         return False
@@ -723,11 +787,13 @@ def merge_research_full(
             if isinstance(news, list):
                 for item in news[:5]:
                     if isinstance(item, dict):
-                        news_items.append({
-                            "title": item.get("title", ""),
-                            "source": item.get("publisher", "yahoo"),
-                            "link": item.get("link", ""),
-                        })
+                        news_items.append(
+                            {
+                                "title": item.get("title", ""),
+                                "source": item.get("publisher", "yahoo"),
+                                "link": item.get("link", ""),
+                            }
+                        )
             for i, nitem in enumerate(news_items[:10]):
                 nid = f"{research_id}_news_{i}"
                 title = _truncate(nitem.get("title", ""), 500)
@@ -740,15 +806,18 @@ def merge_research_full(
                     "WITH n "
                     "MATCH (r:Research {id: $rid}) "
                     "MERGE (r)-[:HAS_NEWS]->(n)",
-                    id=nid, date=research_date, title=title,
-                    source=source, link=link, rid=research_id,
+                    id=nid,
+                    date=research_date,
+                    title=title,
+                    source=source,
+                    link=link,
+                    rid=research_id,
                 )
                 if research_type in ("stock", "business"):
                     session.run(
-                        "MATCH (n:News {id: $nid}) "
-                        "MERGE (s:Stock {symbol: $symbol}) "
-                        "MERGE (n)-[:MENTIONS]->(s)",
-                        nid=nid, symbol=target,
+                        "MATCH (n:News {id: $nid}) MERGE (s:Stock {symbol: $symbol}) MERGE (n)-[:MENTIONS]->(s)",
+                        nid=nid,
+                        symbol=target,
                     )
 
             # --- Sentiment nodes ---
@@ -762,7 +831,8 @@ def merge_research_full(
                     "WITH s "
                     "MATCH (r:Research {id: $rid}) "
                     "MERGE (r)-[:HAS_SENTIMENT]->(s)",
-                    id=sid, date=research_date,
+                    id=sid,
+                    date=research_date,
                     score=float(xs.get("score", 0)),
                     summary=_truncate(xs.get("summary", ""), 500),
                     rid=research_id,
@@ -780,8 +850,11 @@ def merge_research_full(
                     "WITH s "
                     "MATCH (r:Research {id: $rid}) "
                     "MERGE (r)-[:HAS_SENTIMENT]->(s)",
-                    id=sid2, date=research_date,
-                    pos=pos_text, neg=neg_text, rid=research_id,
+                    id=sid2,
+                    date=research_date,
+                    pos=pos_text,
+                    neg=neg_text,
+                    rid=research_id,
                 )
 
             # --- Catalyst nodes ---
@@ -799,8 +872,11 @@ def merge_research_full(
                                 "WITH c "
                                 "MATCH (r:Research {id: $rid}) "
                                 "MERGE (r)-[:HAS_CATALYST]->(c)",
-                                id=cid, date=research_date, polarity=polarity,
-                                text=_truncate(str(txt), 500), rid=research_id,
+                                id=cid,
+                                date=research_date,
+                                polarity=polarity,
+                                text=_truncate(str(txt), 500),
+                                rid=research_id,
                             )
 
             # --- AnalystView nodes ---
@@ -813,7 +889,8 @@ def merge_research_full(
                         "WITH a "
                         "MATCH (r:Research {id: $rid}) "
                         "MERGE (r)-[:HAS_ANALYST_VIEW]->(a)",
-                        id=avid, date=research_date,
+                        id=avid,
+                        date=research_date,
                         text=_truncate(str(view_text), 500),
                         rid=research_id,
                     )
@@ -823,9 +900,11 @@ def merge_research_full(
 
 
 def merge_market_context_full(
-    context_date: str, indices: list[dict],
-    grok_research: Optional[dict] = None,
-    semantic_summary: str = "", embedding: Optional[list[float]] = None,
+    context_date: str,
+    indices: list[dict],
+    grok_research: dict | None = None,
+    semantic_summary: str = "",
+    embedding: list[float] | None = None,
 ) -> bool:
     """Create MarketContext with semantic sub-nodes (KIK-413).
 
@@ -839,11 +918,8 @@ def merge_market_context_full(
          sub-nodes capped at 20 indicators, 5 events, 3 rotations, 1 sentiment.
     """
     if _get_mode() != "full":
-        return merge_market_context(context_date, indices,
-                                    semantic_summary=semantic_summary,
-                                    embedding=embedding)
-    merge_market_context(context_date, indices,
-                         semantic_summary=semantic_summary, embedding=embedding)
+        return merge_market_context(context_date, indices, semantic_summary=semantic_summary, embedding=embedding)
+    merge_market_context(context_date, indices, semantic_summary=semantic_summary, embedding=embedding)
     driver = _get_driver()
     if driver is None:
         return False
@@ -861,7 +937,8 @@ def merge_market_context_full(
                     "WITH ind "
                     "MATCH (m:MarketContext {id: $mid}) "
                     "MERGE (m)-[:INCLUDES]->(ind)",
-                    id=iid, date=context_date,
+                    id=iid,
+                    date=context_date,
                     name=str(idx.get("name", ""))[:100],
                     symbol=str(idx.get("symbol", ""))[:20],
                     price=float(idx.get("price", 0) or 0),
@@ -884,8 +961,10 @@ def merge_market_context_full(
                         "WITH e "
                         "MATCH (m:MarketContext {id: $mid}) "
                         "MERGE (m)-[:HAS_EVENT]->(e)",
-                        id=eid, date=context_date,
-                        text=_truncate(str(ev), 500), mid=context_id,
+                        id=eid,
+                        date=context_date,
+                        text=_truncate(str(ev), 500),
+                        mid=context_id,
                     )
 
             # --- SectorRotation nodes ---
@@ -899,8 +978,10 @@ def merge_market_context_full(
                         "WITH sr "
                         "MATCH (m:MarketContext {id: $mid}) "
                         "MERGE (m)-[:HAS_ROTATION]->(sr)",
-                        id=rid, date=context_date,
-                        text=_truncate(str(rot), 500), mid=context_id,
+                        id=rid,
+                        date=context_date,
+                        text=_truncate(str(rot), 500),
+                        mid=context_id,
                     )
 
             # --- Sentiment node (market-level) ---
@@ -914,7 +995,8 @@ def merge_market_context_full(
                     "WITH s "
                     "MATCH (m:MarketContext {id: $mid}) "
                     "MERGE (m)-[:HAS_SENTIMENT]->(s)",
-                    id=sid, date=context_date,
+                    id=sid,
+                    date=context_date,
                     score=float(sentiment.get("score", 0)),
                     summary=_truncate(sentiment.get("summary", ""), 500),
                     mid=context_id,
@@ -929,6 +1011,7 @@ def merge_market_context_full(
 # Query helpers
 # ---------------------------------------------------------------------------
 
+
 def get_stock_history(symbol: str) -> dict:
     """Get all graph relationships for a stock.
 
@@ -941,8 +1024,12 @@ def get_stock_history(symbol: str) -> dict:
          into a single dict; returns empty lists on driver absence or error.
     """
     _empty: dict = {
-        "screens": [], "reports": [], "trades": [],
-        "health_checks": [], "notes": [], "themes": [],
+        "screens": [],
+        "reports": [],
+        "trades": [],
+        "health_checks": [],
+        "notes": [],
+        "themes": [],
         "researches": [],
     }
     driver = _get_driver()
@@ -994,8 +1081,7 @@ def get_stock_history(symbol: str) -> dict:
             result["notes"] = [dict(r) for r in records]
 
             records = session.run(
-                "MATCH (s:Stock {symbol: $symbol})-[:HAS_THEME]->(t:Theme) "
-                "RETURN t.name AS name",
+                "MATCH (s:Stock {symbol: $symbol})-[:HAS_THEME]->(t:Theme) RETURN t.name AS name",
                 symbol=symbol,
             )
             result["themes"] = [r["name"] for r in records]

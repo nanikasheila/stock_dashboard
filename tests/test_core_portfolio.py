@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -65,10 +65,13 @@ class TestLoadPortfolio:
     def test_loads_basic_rows(self, tmp_path: Path):
         """正常なCSVから2行を正しく読み込む."""
         csv_file = tmp_path / "portfolio.csv"
-        _write_csv(csv_file, [
-            "7203.T,100,2850,JPY,2024-01-15,",
-            "AAPL,10,180,USD,2024-03-01,test memo",
-        ])
+        _write_csv(
+            csv_file,
+            [
+                "7203.T,100,2850,JPY,2024-01-15,",
+                "AAPL,10,180,USD,2024-03-01,test memo",
+            ],
+        )
         result = load_portfolio(str(csv_file))
         assert len(result) == 2
         assert result[0]["symbol"] == "7203.T"
@@ -81,10 +84,13 @@ class TestLoadPortfolio:
     def test_skips_zero_shares_rows(self, tmp_path: Path):
         """shares=0 の行はスキップされる."""
         csv_file = tmp_path / "portfolio.csv"
-        _write_csv(csv_file, [
-            "VTI,0,200,USD,2024-01-01,",
-            "AAPL,5,180,USD,2024-01-01,",
-        ])
+        _write_csv(
+            csv_file,
+            [
+                "VTI,0,200,USD,2024-01-01,",
+                "AAPL,5,180,USD,2024-01-01,",
+            ],
+        )
         result = load_portfolio(str(csv_file))
         assert len(result) == 1
         assert result[0]["symbol"] == "AAPL"
@@ -92,10 +98,13 @@ class TestLoadPortfolio:
     def test_skips_empty_symbol_rows(self, tmp_path: Path):
         """symbol が空の行はスキップされる."""
         csv_file = tmp_path / "portfolio.csv"
-        _write_csv(csv_file, [
-            ",10,100,JPY,2024-01-01,",
-            "VTI,5,200,USD,2024-01-01,",
-        ])
+        _write_csv(
+            csv_file,
+            [
+                ",10,100,JPY,2024-01-01,",
+                "VTI,5,200,USD,2024-01-01,",
+            ],
+        )
         result = load_portfolio(str(csv_file))
         assert len(result) == 1
 
@@ -153,9 +162,7 @@ class TestAddPosition:
     def test_adds_new_position(self, tmp_path: Path):
         """新規ポジションが CSVに追加される."""
         csv_file = tmp_path / "portfolio.csv"
-        result = add_position(
-            str(csv_file), "VTI", 5, 200.0, "USD", "2024-01-01"
-        )
+        result = add_position(str(csv_file), "VTI", 5, 200.0, "USD", "2024-01-01")
         assert result["symbol"] == "VTI"
         assert result["shares"] == 5
         # Persisted
@@ -169,9 +176,7 @@ class TestAddPosition:
         # First buy: 10 shares @ 100
         add_position(str(csv_file), "AAPL", 10, 100.0, "USD", "2024-01-01")
         # Second buy: 10 shares @ 200
-        result = add_position(
-            str(csv_file), "AAPL", 10, 200.0, "USD", "2024-06-01"
-        )
+        result = add_position(str(csv_file), "AAPL", 10, 200.0, "USD", "2024-06-01")
         # Expected avg = (10*100 + 10*200) / 20 = 150.0
         assert result["cost_price"] == pytest.approx(150.0)
         assert result["shares"] == 20
@@ -256,6 +261,7 @@ class TestGetFxRates:
 
     def test_unavailable_pair_skipped(self):
         """price が None のペアは辞書に追加されない."""
+
         def _side_effect(pair: str):
             if pair == "USDJPY=X":
                 return {"price": None}
@@ -324,9 +330,7 @@ class TestGetSnapshot:
         csv_file = tmp_path / "portfolio.csv"
         _write_csv(csv_file, ["VTI,10,200,USD,2024-01-01,"])
         mock_client = MagicMock()
-        mock_client.get_stock_info.return_value = {
-            "price": None, "name": "VTI", "currency": "USD"
-        }
+        mock_client.get_stock_info.return_value = {"price": None, "name": "VTI", "currency": "USD"}
         result = get_snapshot(str(csv_file), mock_client)
         assert result["positions"][0]["pnl"] == 0.0
 
@@ -376,13 +380,16 @@ class TestMergePositions:
     def test_new_symbol_appended(self):
         """既存に存在しない銘柄は末尾に追加される."""
         current = [
-            {"symbol": "AAPL", "shares": 10, "cost_price": 180.0,
-             "cost_currency": "USD", "purchase_date": "", "memo": ""}
+            {
+                "symbol": "AAPL",
+                "shares": 10,
+                "cost_price": 180.0,
+                "cost_currency": "USD",
+                "purchase_date": "",
+                "memo": "",
+            }
         ]
-        proposed = [
-            {"symbol": "VTI", "shares": 5, "cost_price": 200.0,
-             "cost_currency": "USD"}
-        ]
+        proposed = [{"symbol": "VTI", "shares": 5, "cost_price": 200.0, "cost_currency": "USD"}]
         merged = merge_positions(current, proposed)
         assert len(merged) == 2
         symbols = [p["symbol"] for p in merged]
@@ -391,13 +398,16 @@ class TestMergePositions:
     def test_existing_symbol_weighted_average(self):
         """既存銘柄への追加は加重平均コストで合算される."""
         current = [
-            {"symbol": "AAPL", "shares": 10, "cost_price": 100.0,
-             "cost_currency": "USD", "purchase_date": "", "memo": ""}
+            {
+                "symbol": "AAPL",
+                "shares": 10,
+                "cost_price": 100.0,
+                "cost_currency": "USD",
+                "purchase_date": "",
+                "memo": "",
+            }
         ]
-        proposed = [
-            {"symbol": "AAPL", "shares": 10, "cost_price": 200.0,
-             "cost_currency": "USD"}
-        ]
+        proposed = [{"symbol": "AAPL", "shares": 10, "cost_price": 200.0, "cost_currency": "USD"}]
         merged = merge_positions(current, proposed)
         assert len(merged) == 1
         assert merged[0]["shares"] == 20
@@ -406,26 +416,32 @@ class TestMergePositions:
     def test_original_list_not_mutated(self):
         """元の current リストは変更されない（deep copy 確認）."""
         current = [
-            {"symbol": "AAPL", "shares": 10, "cost_price": 100.0,
-             "cost_currency": "USD", "purchase_date": "", "memo": ""}
+            {
+                "symbol": "AAPL",
+                "shares": 10,
+                "cost_price": 100.0,
+                "cost_currency": "USD",
+                "purchase_date": "",
+                "memo": "",
+            }
         ]
-        proposed = [
-            {"symbol": "AAPL", "shares": 5, "cost_price": 200.0,
-             "cost_currency": "USD"}
-        ]
+        proposed = [{"symbol": "AAPL", "shares": 5, "cost_price": 200.0, "cost_currency": "USD"}]
         merge_positions(current, proposed)
         assert current[0]["shares"] == 10  # unchanged
 
     def test_case_insensitive_symbol_matching(self):
         """シンボルの大文字/小文字を問わずマッチする."""
         current = [
-            {"symbol": "aapl", "shares": 10, "cost_price": 100.0,
-             "cost_currency": "USD", "purchase_date": "", "memo": ""}
+            {
+                "symbol": "aapl",
+                "shares": 10,
+                "cost_price": 100.0,
+                "cost_currency": "USD",
+                "purchase_date": "",
+                "memo": "",
+            }
         ]
-        proposed = [
-            {"symbol": "AAPL", "shares": 5, "cost_price": 200.0,
-             "cost_currency": "USD"}
-        ]
+        proposed = [{"symbol": "AAPL", "shares": 5, "cost_price": 200.0, "cost_currency": "USD"}]
         merged = merge_positions(current, proposed)
         assert len(merged) == 1
         assert merged[0]["shares"] == 15
@@ -579,17 +595,12 @@ class TestAnalyzeConcentration:
     def test_risk_level_labels(self):
         """リスクレベルのラベルが正しく返される."""
         # 分散: 5銘柄均等 → HHI = 0.2 < 0.25 → '分散'
-        port_diversified = [
-            {"sector": str(i), "country": str(i), "currency": str(i)}
-            for i in range(5)
-        ]
+        port_diversified = [{"sector": str(i), "country": str(i), "currency": str(i)} for i in range(5)]
         result = analyze_concentration(port_diversified, [0.2] * 5)
         assert result["risk_level"] == "分散"
 
         # 危険な集中: 1銘柄100%
-        port_concentrated = [
-            {"sector": "A", "country": "B", "currency": "C"}
-        ]
+        port_concentrated = [{"sector": "A", "country": "B", "currency": "C"}]
         result2 = analyze_concentration(port_concentrated, [1.0])
         assert result2["risk_level"] == "危険な集中"
 
@@ -616,9 +627,7 @@ class TestAnalyzeConcentration:
 
     def test_concentration_multiplier_range(self):
         """concentration_multiplier は常に 1.0〜1.6 の範囲内."""
-        portfolio_data = [
-            {"sector": "A", "country": "B", "currency": "C"}
-        ]
+        portfolio_data = [{"sector": "A", "country": "B", "currency": "C"}]
         result = analyze_concentration(portfolio_data, [1.0])
         assert 1.0 <= result["concentration_multiplier"] <= 1.6
 
@@ -648,9 +657,7 @@ class TestUpdateCashPosition:
         """既存 JPY.CASH がある場合に売却受取金が加算される."""
         csv_file = tmp_path / "portfolio.csv"
         _write_csv(csv_file, ["JPY.CASH,1,10000.0,JPY,2026-01-01,預り金"])
-        result = update_cash_position(
-            str(csv_file), "JPY", 50000.0, "2026-02-28"
-        )
+        result = update_cash_position(str(csv_file), "JPY", 50000.0, "2026-02-28")
         assert result["cost_price"] == pytest.approx(60000.0)
         assert result["purchase_date"] == "2026-02-28"
         # Verify persistence
@@ -661,27 +668,21 @@ class TestUpdateCashPosition:
         """既存 USD.CASH から購入支払いが減算される."""
         csv_file = tmp_path / "portfolio.csv"
         _write_csv(csv_file, ["USD.CASH,1,5000.0,USD,2026-01-01,外貨預り金"])
-        result = update_cash_position(
-            str(csv_file), "USD", -2000.0, "2026-02-28"
-        )
+        result = update_cash_position(str(csv_file), "USD", -2000.0, "2026-02-28")
         assert result["cost_price"] == pytest.approx(3000.0)
 
     def test_allows_negative_balance(self, tmp_path: Path):
         """残高不足時にエラーにならず負の cost_price で保存される."""
         csv_file = tmp_path / "portfolio.csv"
         _write_csv(csv_file, ["JPY.CASH,1,1000.0,JPY,2026-01-01,預り金"])
-        result = update_cash_position(
-            str(csv_file), "JPY", -5000.0, "2026-02-28"
-        )
+        result = update_cash_position(str(csv_file), "JPY", -5000.0, "2026-02-28")
         assert result["cost_price"] == pytest.approx(-4000.0)
 
     def test_creates_cash_row_when_not_exists(self, tmp_path: Path):
         """該当 .CASH 行が存在しない場合に新規行が作成される."""
         csv_file = tmp_path / "portfolio.csv"
         _write_csv(csv_file, ["VTI,10,200,USD,2026-01-01,"])
-        result = update_cash_position(
-            str(csv_file), "USD", 3000.0, "2026-02-28"
-        )
+        result = update_cash_position(str(csv_file), "USD", 3000.0, "2026-02-28")
         assert result["symbol"] == "USD.CASH"
         assert result["shares"] == 1
         assert result["cost_price"] == pytest.approx(3000.0)
@@ -693,9 +694,7 @@ class TestUpdateCashPosition:
         """JPY/USD 以外の通貨でも正しく更新される."""
         csv_file = tmp_path / "portfolio.csv"
         _write_csv(csv_file, [])
-        result = update_cash_position(
-            str(csv_file), "EUR", 1500.0, "2026-02-28"
-        )
+        result = update_cash_position(str(csv_file), "EUR", 1500.0, "2026-02-28")
         assert result["symbol"] == "EUR.CASH"
         assert result["cost_price"] == pytest.approx(1500.0)
 
@@ -703,17 +702,13 @@ class TestUpdateCashPosition:
         """amount_delta=0 で cost_price が変化しないこと."""
         csv_file = tmp_path / "portfolio.csv"
         _write_csv(csv_file, ["JPY.CASH,1,10000.0,JPY,2026-01-01,預り金"])
-        result = update_cash_position(
-            str(csv_file), "JPY", 0.0, "2026-02-28"
-        )
+        result = update_cash_position(str(csv_file), "JPY", 0.0, "2026-02-28")
         assert result["cost_price"] == pytest.approx(10000.0)
 
     def test_creates_negative_cash_row_for_buy_without_existing(self, tmp_path: Path):
         """既存 .CASH がない状態で購入すると負の残高で新規作成される."""
         csv_file = tmp_path / "portfolio.csv"
         _write_csv(csv_file, [])
-        result = update_cash_position(
-            str(csv_file), "JPY", -50000.0, "2026-02-28"
-        )
+        result = update_cash_position(str(csv_file), "JPY", -50000.0, "2026-02-28")
         assert result["symbol"] == "JPY.CASH"
         assert result["cost_price"] == pytest.approx(-50000.0)

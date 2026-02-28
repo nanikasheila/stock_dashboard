@@ -11,12 +11,10 @@ from __future__ import annotations
 
 import logging
 import sys
-import os
 import time as _time
 from collections import defaultdict
-from datetime import datetime, timedelta, date
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -30,35 +28,33 @@ if _PROJECT_ROOT not in sys.path:
 _DEFAULT_HISTORY_DIR = str(Path(_PROJECT_ROOT) / "data" / "history")
 # Why: Cache path is centralized in src.core.paths to avoid hardcoded duplication.
 from src.core.paths import PRICE_CACHE_DIR as _PRICE_CACHE_DIR
+
 _CACHE_TTL_SECONDS = 4 * 3600  # 4 hours
 
-from src.core.portfolio.portfolio_manager import (
-    load_portfolio,
-    get_fx_rates,
-    DEFAULT_CSV_PATH,
-)
-from src.core.models import Position
 from src.core.common import is_cash
-from src.core.ticker_utils import infer_currency
-from src.data import yahoo_client
-from src.data.history_store import load_history
 from src.core.health_check import (
-    check_trend_health,
-    check_change_quality,
-    check_long_term_suitability,
-    compute_alert_level,
-    ALERT_NONE,
-    ALERT_EARLY_WARNING,
     ALERT_CAUTION,
     ALERT_EXIT,
+    ALERT_NONE,
+    check_change_quality,
+    check_long_term_suitability,
+    check_trend_health,
+    compute_alert_level,
+)
+from src.core.portfolio.portfolio_manager import (
+    DEFAULT_CSV_PATH,
+    get_fx_rates,
+    load_portfolio,
 )
 from src.core.screening.indicators import (
+    assess_return_stability,
     calculate_shareholder_return,
     calculate_shareholder_return_history,
-    assess_return_stability,
 )
+from src.core.ticker_utils import infer_currency
 from src.core.value_trap import detect_value_trap
-
+from src.data import yahoo_client
+from src.data.history_store import load_history
 
 # ---------------------------------------------------------------------------
 # 0. 銘柄表示ラベル生成ユーティリティ
@@ -66,13 +62,30 @@ from src.core.value_trap import detect_value_trap
 
 # 企業名から除去する法人格サフィックス（長い順にマッチ）
 _CORPORATE_SUFFIXES = [
-    ", Inc.", " Inc.", " Inc",
-    " Corporation", " Corp.", " Corp",
-    " Co., Ltd.", " Co.,Ltd.", " Co.",
-    " Holdings", " Holding",
-    " Group", " Limited", " Ltd.", " Ltd",
-    " plc", " PLC", " SE", " N.V.", " S.A.", " AG", " SA",
-    "株式会社", "（株）",
+    ", Inc.",
+    " Inc.",
+    " Inc",
+    " Corporation",
+    " Corp.",
+    " Corp",
+    " Co., Ltd.",
+    " Co.,Ltd.",
+    " Co.",
+    " Holdings",
+    " Holding",
+    " Group",
+    " Limited",
+    " Ltd.",
+    " Ltd",
+    " plc",
+    " PLC",
+    " SE",
+    " N.V.",
+    " S.A.",
+    " AG",
+    " SA",
+    "株式会社",
+    "（株）",
 ]
 
 
@@ -108,9 +121,9 @@ def _shorten_company_name(name: str, max_len: int = 8) -> str:
     cjk_count = sum(
         1
         for c in cleaned
-        if "\u4e00" <= c <= "\u9fff"       # 漢字
-        or "\u3040" <= c <= "\u309f"       # ひらがな
-        or "\u30a0" <= c <= "\u30ff"       # カタカナ
+        if "\u4e00" <= c <= "\u9fff"  # 漢字
+        or "\u3040" <= c <= "\u309f"  # ひらがな
+        or "\u30a0" <= c <= "\u30ff"  # カタカナ
     )
     is_cjk = cjk_count > len(cleaned) / 3
 
@@ -167,6 +180,7 @@ def _build_symbol_labels(symbols: list[str]) -> dict[str, str]:
 # 1. 現在のスナップショット（銘柄別評価額）
 # ---------------------------------------------------------------------------
 
+
 def get_current_snapshot(
     csv_path: str = DEFAULT_CSV_PATH,
 ) -> dict:
@@ -198,18 +212,20 @@ def get_current_snapshot(
             currency = symbol.replace(".CASH", "")
             rate = fx_rates.get(currency, 1.0)
             eval_jpy = shares * cost_price * rate
-            result_positions.append({
-                "symbol": symbol,
-                "name": memo or symbol,
-                "shares": shares,
-                "current_price": cost_price,
-                "currency": currency,
-                "evaluation_jpy": eval_jpy,
-                "cost_jpy": eval_jpy,  # Cash: 損益ゼロ
-                "pnl_jpy": 0,
-                "pnl_pct": 0,
-                "sector": "Cash",
-            })
+            result_positions.append(
+                {
+                    "symbol": symbol,
+                    "name": memo or symbol,
+                    "shares": shares,
+                    "current_price": cost_price,
+                    "currency": currency,
+                    "evaluation_jpy": eval_jpy,
+                    "cost_jpy": eval_jpy,  # Cash: 損益ゼロ
+                    "pnl_jpy": 0,
+                    "pnl_pct": 0,
+                    "sector": "Cash",
+                }
+            )
             total_value_jpy += eval_jpy
             continue
 
@@ -224,19 +240,21 @@ def get_current_snapshot(
         cost_rate = fx_rates.get(cost_currency, 1.0)
         cost_jpy = shares * cost_price * cost_rate
 
-        result_positions.append({
-            "symbol": symbol,
-            "name": info.get("name", memo or symbol),
-            "shares": shares,
-            "current_price": price,
-            "currency": currency,
-            "evaluation_jpy": eval_jpy,
-            "cost_jpy": cost_jpy,
-            "pnl_jpy": eval_jpy - cost_jpy,
-            "pnl_pct": ((eval_jpy / cost_jpy) - 1) * 100 if cost_jpy else 0,
-            "sector": info.get("sector", ""),
-            "purchase_date": purchase_date,
-        })
+        result_positions.append(
+            {
+                "symbol": symbol,
+                "name": info.get("name", memo or symbol),
+                "shares": shares,
+                "current_price": price,
+                "currency": currency,
+                "evaluation_jpy": eval_jpy,
+                "cost_jpy": cost_jpy,
+                "pnl_jpy": eval_jpy - cost_jpy,
+                "pnl_pct": ((eval_jpy / cost_jpy) - 1) * 100 if cost_jpy else 0,
+                "sector": info.get("sector", ""),
+                "purchase_date": purchase_date,
+            }
+        )
         total_value_jpy += eval_jpy
 
     # 実現損益・含み損益の計算（総平均法）
@@ -258,17 +276,20 @@ def get_current_snapshot(
 # 2. 売買履歴から時系列の保有状況を復元
 # ---------------------------------------------------------------------------
 
+
 def _build_holdings_timeline(
-    base_dir: Optional[str] = None,
+    base_dir: str | None = None,
 ) -> list[dict]:
     """trade 履歴を日時順にロードして返す."""
     trades = load_history("trade", base_dir=base_dir or _DEFAULT_HISTORY_DIR)
     # 取引日 (date) でソート。同一日は buy/transfer → sell の順に並べる
     _TRADE_TYPE_ORDER = {"transfer": 0, "buy": 1, "sell": 2}
-    trades.sort(key=lambda t: (
-        t.get("date", ""),
-        _TRADE_TYPE_ORDER.get(t.get("trade_type", "buy"), 1),
-    ))
+    trades.sort(
+        key=lambda t: (
+            t.get("date", ""),
+            _TRADE_TYPE_ORDER.get(t.get("trade_type", "buy"), 1),
+        )
+    )
     return trades
 
 
@@ -413,10 +434,12 @@ def _compute_realized_pnl(
         if tt == "buy":
             total_jpy = _trade_cost_jpy(trade, fx_rates)
             cost_per_share = total_jpy / shares if shares > 0 else 0
-            lots[sym].append({
-                "shares": float(shares),
-                "cost_jpy_per_share": cost_per_share,
-            })
+            lots[sym].append(
+                {
+                    "shares": float(shares),
+                    "cost_jpy_per_share": cost_per_share,
+                }
+            )
 
         elif tt == "transfer":
             if price <= 0 and lots[sym]:
@@ -431,10 +454,12 @@ def _compute_realized_pnl(
                 # Regular transfer with cost basis
                 total_jpy = _trade_cost_jpy(trade, fx_rates)
                 cost_per_share = total_jpy / shares if shares > 0 else 0
-                lots[sym].append({
-                    "shares": float(shares),
-                    "cost_jpy_per_share": cost_per_share,
-                })
+                lots[sym].append(
+                    {
+                        "shares": float(shares),
+                        "cost_jpy_per_share": cost_per_share,
+                    }
+                )
 
         elif tt == "sell":
             total_jpy = _trade_cost_jpy(trade, fx_rates)
@@ -475,23 +500,33 @@ def _build_trade_activity(
         if not d:
             continue
         month = d[:7]  # YYYY-MM
-        rows.append({
-            "month": month,
-            "trade_type": tt,
-            "amount_jpy": amount,
-        })
+        rows.append(
+            {
+                "month": month,
+                "trade_type": tt,
+                "amount_jpy": amount,
+            }
+        )
 
     if not rows:
         return pd.DataFrame()
 
     df = pd.DataFrame(rows)
-    buy_df = df[df["trade_type"].isin(["buy", "transfer"])].groupby("month").agg(
-        buy_count=("amount_jpy", "count"),
-        buy_amount=("amount_jpy", "sum"),
+    buy_df = (
+        df[df["trade_type"].isin(["buy", "transfer"])]
+        .groupby("month")
+        .agg(
+            buy_count=("amount_jpy", "count"),
+            buy_amount=("amount_jpy", "sum"),
+        )
     )
-    sell_df = df[df["trade_type"] == "sell"].groupby("month").agg(
-        sell_count=("amount_jpy", "count"),
-        sell_amount=("amount_jpy", "sum"),
+    sell_df = (
+        df[df["trade_type"] == "sell"]
+        .groupby("month")
+        .agg(
+            sell_count=("amount_jpy", "count"),
+            sell_amount=("amount_jpy", "sum"),
+        )
     )
     result = buy_df.join(sell_df, how="outer").fillna(0)
     result["net_flow"] = result["buy_amount"] - result["sell_amount"]
@@ -502,6 +537,7 @@ def _build_trade_activity(
 # ---------------------------------------------------------------------------
 # 2-b. 総平均法による損益計算
 # ---------------------------------------------------------------------------
+
 
 def _compute_pnl_moving_average(
     trades: list[dict],
@@ -593,11 +629,7 @@ def _compute_pnl_moving_average(
         "realized_total_jpy": realized_total,
         "unrealized_by_symbol": unrealized_by_symbol,
         "unrealized_total_jpy": unrealized_total,
-        "cost_basis": {
-            sym: holding_cost[sym]
-            for sym in holding_shares
-            if holding_shares[sym] > 0.5
-        },
+        "cost_basis": {sym: holding_cost[sym] for sym in holding_shares if holding_shares[sym] > 0.5},
     }
 
 
@@ -610,21 +642,22 @@ def _compute_pnl_moving_average(
 # ---------------------------------------------------------------------------
 
 _PERIOD_MAP: dict[str, str | None] = {
-    "1mo":  "1mo",
-    "3mo":  "3mo",
-    "6mo":  "6mo",
-    "1y":   "1y",
-    "2y":   "2y",
-    "3y":   "3y",
-    "5y":   "5y",
-    "max":  "max",
-    "all":  "max",
+    "1mo": "1mo",
+    "3mo": "3mo",
+    "6mo": "6mo",
+    "1y": "1y",
+    "2y": "2y",
+    "3y": "3y",
+    "5y": "5y",
+    "max": "max",
+    "all": "max",
 }
 
 
 def _fetch_price_history(
-    symbol: str, period: str,
-) -> Optional[pd.DataFrame]:
+    symbol: str,
+    period: str,
+) -> pd.DataFrame | None:
     """期間指定に応じた株価履歴を取得する (個別フォールバック用)."""
     yf_period = _PERIOD_MAP.get(period, period)
     hist = yahoo_client.get_price_history(symbol, period=yf_period)
@@ -637,13 +670,14 @@ def _fetch_price_history(
 # 価格キャッシュ (ディスク + バッチ取得)
 # ---------------------------------------------------------------------------
 
+
 def _get_cache_path(period: str) -> Path:
     """期間ごとのキャッシュファイルパスを返す."""
     safe = period.replace("/", "_")
     return _PRICE_CACHE_DIR / f"close_{safe}.csv"
 
 
-def _load_cached_prices(period: str) -> Optional[pd.DataFrame]:
+def _load_cached_prices(period: str) -> pd.DataFrame | None:
     """ディスクキャッシュから株価を読み込む. TTL 超過時は None."""
     path = _get_cache_path(period)
     if not path.exists():
@@ -898,14 +932,17 @@ def build_portfolio_history(
 # 4. セクター別集計
 # ---------------------------------------------------------------------------
 
+
 def get_sector_breakdown(snapshot: dict) -> pd.DataFrame:
     """スナップショットからセクター別評価額を集計."""
     rows = []
     for p in snapshot["positions"]:
-        rows.append({
-            "sector": p.get("sector") or "Unknown",
-            "evaluation_jpy": p.get("evaluation_jpy", 0),
-        })
+        rows.append(
+            {
+                "sector": p.get("sector") or "Unknown",
+                "evaluation_jpy": p.get("evaluation_jpy", 0),
+            }
+        )
     df = pd.DataFrame(rows)
     if df.empty:
         return df
@@ -915,6 +952,7 @@ def get_sector_breakdown(snapshot: dict) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # 5. 月次集計
 # ---------------------------------------------------------------------------
+
 
 def get_monthly_summary(history_df: pd.DataFrame) -> pd.DataFrame:
     """日次データから月末の total を抽出して月次テーブルを返す."""
@@ -940,9 +978,7 @@ def get_monthly_summary(history_df: pd.DataFrame) -> pd.DataFrame:
 
     # 含み損益
     if "invested_jpy" in monthly.columns:
-        monthly["unrealized_pnl"] = (
-            monthly["month_end_value_jpy"] - monthly["invested_jpy"]
-        )
+        monthly["unrealized_pnl"] = monthly["month_end_value_jpy"] - monthly["invested_jpy"]
 
     return monthly
 
@@ -961,6 +997,7 @@ def get_trade_activity(
 # ---------------------------------------------------------------------------
 # 6. 資産推定推移（楽観/ベース/悲観）
 # ---------------------------------------------------------------------------
+
 
 def build_projection(
     current_value: float,
@@ -992,6 +1029,7 @@ def build_projection(
     if base_rate is None:
         try:
             from src.core.return_estimate import estimate_portfolio_return
+
             result = estimate_portfolio_return(csv_path, yahoo_client)
             pf = result.get("portfolio", {})
             optimistic_rate = pf.get("optimistic") or 0.15
@@ -1017,12 +1055,14 @@ def build_projection(
     rows = []
     for d in dates:
         t_years = (d - today).days / 365.25
-        rows.append({
-            "date": d,
-            "optimistic": current_value * (1 + optimistic_rate) ** t_years,
-            "base": current_value * (1 + base_rate) ** t_years,
-            "pessimistic": current_value * (1 + pessimistic_rate) ** t_years,
-        })
+        rows.append(
+            {
+                "date": d,
+                "optimistic": current_value * (1 + optimistic_rate) ** t_years,
+                "base": current_value * (1 + base_rate) ** t_years,
+                "pessimistic": current_value * (1 + pessimistic_rate) ** t_years,
+            }
+        )
 
     df = pd.DataFrame(rows).set_index("date")
     return df
@@ -1119,6 +1159,7 @@ def compute_risk_metrics(history_df: pd.DataFrame) -> dict:
 # 8. Top/Worst パフォーマー
 # ---------------------------------------------------------------------------
 
+
 def compute_top_worst_performers(
     history_df: pd.DataFrame,
     top_n: int = 3,
@@ -1182,11 +1223,13 @@ def compute_top_worst_performers(
             else:
                 pct = (cur / prev - 1) * 100
             change_jpy = cur - prev
-            performers.append({
-                "symbol": col,
-                "change_pct": round(pct, 2),
-                "change_jpy": round(change_jpy, 0),
-            })
+            performers.append(
+                {
+                    "symbol": col,
+                    "change_pct": round(pct, 2),
+                    "change_jpy": round(change_jpy, 0),
+                }
+            )
 
     performers.sort(key=lambda x: x["change_pct"], reverse=True)
 
@@ -1200,6 +1243,7 @@ def compute_top_worst_performers(
 # ---------------------------------------------------------------------------
 # 9. 前日比計算
 # ---------------------------------------------------------------------------
+
 
 def compute_daily_change(history_df: pd.DataFrame) -> dict:
     """直近の前日比（金額・パーセント）を算出する.
@@ -1236,6 +1280,7 @@ def compute_daily_change(history_df: pd.DataFrame) -> dict:
 # ---------------------------------------------------------------------------
 # 9. ベンチマーク超過リターン
 # ---------------------------------------------------------------------------
+
 
 def compute_benchmark_excess(
     history_df: pd.DataFrame,
@@ -1279,6 +1324,7 @@ def compute_benchmark_excess(
 # ---------------------------------------------------------------------------
 # 10. ベンチマークデータ取得
 # ---------------------------------------------------------------------------
+
 
 def get_benchmark_series(
     symbol: str,
@@ -1336,6 +1382,7 @@ def get_benchmark_series(
 # 12. ドローダウン系列
 # ---------------------------------------------------------------------------
 
+
 def compute_drawdown_series(history_df: pd.DataFrame) -> pd.Series:
     """日次のドローダウン（ピークからの下落率 %）系列を返す.
 
@@ -1364,6 +1411,7 @@ def compute_drawdown_series(history_df: pd.DataFrame) -> pd.Series:
 # ---------------------------------------------------------------------------
 # 13. ローリングSharpe比系列
 # ---------------------------------------------------------------------------
+
 
 def compute_rolling_sharpe(
     history_df: pd.DataFrame,
@@ -1400,15 +1448,14 @@ def compute_rolling_sharpe(
     rolling_mean = daily_returns.rolling(window=window).mean()
     rolling_std = daily_returns.rolling(window=window).std()
 
-    rolling_sharpe = (
-        (rolling_mean - daily_rf) / rolling_std * np.sqrt(trading_days)
-    )
+    rolling_sharpe = (rolling_mean - daily_rf) / rolling_std * np.sqrt(trading_days)
     return rolling_sharpe.dropna()
 
 
 # ---------------------------------------------------------------------------
 # 14. 銘柄間相関行列
 # ---------------------------------------------------------------------------
+
 
 def compute_correlation_matrix(
     history_df: pd.DataFrame,
@@ -1451,6 +1498,7 @@ def compute_correlation_matrix(
 # ---------------------------------------------------------------------------
 # 15. ウェイトドリフト判定
 # ---------------------------------------------------------------------------
+
 
 def compute_weight_drift(
     positions: list[dict],
@@ -1507,14 +1555,16 @@ def compute_weight_drift(
         drift = current_pct - target_pct
 
         if abs(drift) >= threshold_pct:
-            results.append({
-                "symbol": symbol,
-                "name": p.get("name", symbol),
-                "current_pct": round(current_pct, 1),
-                "target_pct": round(target_pct, 1),
-                "drift_pct": round(drift, 1),
-                "status": "overweight" if drift > 0 else "underweight",
-            })
+            results.append(
+                {
+                    "symbol": symbol,
+                    "name": p.get("name", symbol),
+                    "current_pct": round(current_pct, 1),
+                    "target_pct": round(target_pct, 1),
+                    "drift_pct": round(drift, 1),
+                    "status": "overweight" if drift > 0 else "underweight",
+                }
+            )
 
     # 乖離の大きい順にソート
     results.sort(key=lambda x: abs(x["drift_pct"]), reverse=True)
@@ -1524,6 +1574,7 @@ def compute_weight_drift(
 # ---------------------------------------------------------------------------
 # ヘルスチェック（ダッシュボード用）
 # ---------------------------------------------------------------------------
+
 
 def run_dashboard_health_check(
     csv_path: str = DEFAULT_CSV_PATH,
@@ -1587,14 +1638,16 @@ def run_dashboard_health_check(
 
         # 4. Alert level
         alert = compute_alert_level(
-            trend_health, change_quality,
+            trend_health,
+            change_quality,
             stock_detail=stock_detail,
             return_stability=sh_stability,
         )
 
         # 5. Long-term suitability
         long_term = check_long_term_suitability(
-            stock_detail, shareholder_return_data=sh_return,
+            stock_detail,
+            shareholder_return_data=sh_return,
         )
 
         # 6. Value trap detection
@@ -1637,9 +1690,7 @@ def run_dashboard_health_check(
             "value_trap": value_trap.get("is_trap", False),
             "value_trap_reasons": value_trap.get("reasons", []),
             "return_stability": sh_stability.get("stability", ""),
-            "return_stability_emoji": _stability_emoji(
-                sh_stability.get("stability", "")
-            ),
+            "return_stability_emoji": _stability_emoji(sh_stability.get("stability", "")),
             # ファンダメンタルデータ（LLMサマリー用）
             "sector": stock_detail.get("sector", ""),
             "industry": stock_detail.get("industry", ""),
@@ -1719,102 +1770,114 @@ def _compute_sell_alerts(positions: list[dict]) -> list[dict]:
 
         # 1. EXIT → 即売却検討（最高優先度）
         if alert_level == ALERT_EXIT:
-            alerts.append({
-                "symbol": symbol,
-                "name": name,
-                "urgency": "critical",
-                "action": "売却検討",
-                "reason": "EXIT シグナル: テクニカル崩壊 + ファンダメンタル悪化",
-                "details": reasons,
-                "pnl_pct": pnl_pct,
-            })
+            alerts.append(
+                {
+                    "symbol": symbol,
+                    "name": name,
+                    "urgency": "critical",
+                    "action": "売却検討",
+                    "reason": "EXIT シグナル: テクニカル崩壊 + ファンダメンタル悪化",
+                    "details": reasons,
+                    "pnl_pct": pnl_pct,
+                }
+            )
             continue  # EXIT の場合は他の通知は不要
 
         # 2. CAUTION + 含み損 → 損切り検討
         if alert_level == ALERT_CAUTION and pnl_pct < -5:
-            alerts.append({
-                "symbol": symbol,
-                "name": name,
-                "urgency": "critical",
-                "action": "損切り検討",
-                "reason": f"注意アラート & 含み損 {pnl_pct:+.1f}%",
-                "details": reasons,
-                "pnl_pct": pnl_pct,
-            })
+            alerts.append(
+                {
+                    "symbol": symbol,
+                    "name": name,
+                    "urgency": "critical",
+                    "action": "損切り検討",
+                    "reason": f"注意アラート & 含み損 {pnl_pct:+.1f}%",
+                    "details": reasons,
+                    "pnl_pct": pnl_pct,
+                }
+            )
             continue
 
         # 3. CAUTION（含み損なし）→ 警告
         if alert_level == ALERT_CAUTION:
-            alerts.append({
-                "symbol": symbol,
-                "name": name,
-                "urgency": "warning",
-                "action": "注視・一部売却検討",
-                "reason": "注意アラート発生",
-                "details": reasons,
-                "pnl_pct": pnl_pct,
-            })
-
-        # 4. 含み益 +20% 以上 + トレンド下降 → 利確検討
-        if pnl_pct >= 20 and trend == "下降":
-            alerts.append({
-                "symbol": symbol,
-                "name": name,
-                "urgency": "warning",
-                "action": "利確検討",
-                "reason": f"含み益 {pnl_pct:+.1f}% だがトレンド下降中",
-                "details": [
-                    f"含み益 {pnl_pct:+.1f}% を確保できるうちに一部利確を検討",
-                    "トレンド転換で含み益が縮小するリスク",
-                ],
-                "pnl_pct": pnl_pct,
-            })
-
-        # 5. 直近デッドクロス（10日以内）→ 注意
-        if (cross_signal == "death_cross"
-                and days_since_cross is not None
-                and days_since_cross <= 10):
-            # EXIT/CAUTION で既に通知した場合はスキップ
-            if alert_level not in (ALERT_EXIT, ALERT_CAUTION):
-                alerts.append({
+            alerts.append(
+                {
                     "symbol": symbol,
                     "name": name,
                     "urgency": "warning",
-                    "action": "トレンド転換注意",
-                    "reason": f"デッドクロス発生（{days_since_cross}日前）",
+                    "action": "注視・一部売却検討",
+                    "reason": "注意アラート発生",
+                    "details": reasons,
+                    "pnl_pct": pnl_pct,
+                }
+            )
+
+        # 4. 含み益 +20% 以上 + トレンド下降 → 利確検討
+        if pnl_pct >= 20 and trend == "下降":
+            alerts.append(
+                {
+                    "symbol": symbol,
+                    "name": name,
+                    "urgency": "warning",
+                    "action": "利確検討",
+                    "reason": f"含み益 {pnl_pct:+.1f}% だがトレンド下降中",
                     "details": [
-                        f"SMA50がSMA200を下回った（{pos.get('cross_date', '')}）",
-                        "中長期トレンドの下降転換シグナル",
+                        f"含み益 {pnl_pct:+.1f}% を確保できるうちに一部利確を検討",
+                        "トレンド転換で含み益が縮小するリスク",
                     ],
                     "pnl_pct": pnl_pct,
-                })
+                }
+            )
+
+        # 5. 直近デッドクロス（10日以内）→ 注意
+        if cross_signal == "death_cross" and days_since_cross is not None and days_since_cross <= 10:
+            # EXIT/CAUTION で既に通知した場合はスキップ
+            if alert_level not in (ALERT_EXIT, ALERT_CAUTION):
+                alerts.append(
+                    {
+                        "symbol": symbol,
+                        "name": name,
+                        "urgency": "warning",
+                        "action": "トレンド転換注意",
+                        "reason": f"デッドクロス発生（{days_since_cross}日前）",
+                        "details": [
+                            f"SMA50がSMA200を下回った（{pos.get('cross_date', '')}）",
+                            "中長期トレンドの下降転換シグナル",
+                        ],
+                        "pnl_pct": pnl_pct,
+                    }
+                )
 
         # 6. バリュートラップ検出 → 注意
         if value_trap:
-            alerts.append({
-                "symbol": symbol,
-                "name": name,
-                "urgency": "warning",
-                "action": "バリュートラップ注意",
-                "reason": "見せかけの割安（低PER + 利益減少）",
-                "details": pos.get("value_trap_reasons", []),
-                "pnl_pct": pnl_pct,
-            })
+            alerts.append(
+                {
+                    "symbol": symbol,
+                    "name": name,
+                    "urgency": "warning",
+                    "action": "バリュートラップ注意",
+                    "reason": "見せかけの割安（低PER + 利益減少）",
+                    "details": pos.get("value_trap_reasons", []),
+                    "pnl_pct": pnl_pct,
+                }
+            )
 
         # 7. RSI 30以下 → 情報
         if not _is_nan(rsi) and rsi <= 30:
-            alerts.append({
-                "symbol": symbol,
-                "name": name,
-                "urgency": "info",
-                "action": "RSI 売られ過ぎ",
-                "reason": f"RSI = {rsi:.1f}（30以下）",
-                "details": [
-                    "売られ過ぎ水準 — 反発の可能性もあるが更なる下落リスクも",
-                    "他の指標と合わせて判断が必要",
-                ],
-                "pnl_pct": pnl_pct,
-            })
+            alerts.append(
+                {
+                    "symbol": symbol,
+                    "name": name,
+                    "urgency": "info",
+                    "action": "RSI 売られ過ぎ",
+                    "reason": f"RSI = {rsi:.1f}（30以下）",
+                    "details": [
+                        "売られ過ぎ水準 — 反発の可能性もあるが更なる下落リスクも",
+                        "他の指標と合わせて判断が必要",
+                    ],
+                    "pnl_pct": pnl_pct,
+                }
+            )
 
     # urgency 順にソート: critical > warning > info
     _urgency_order = {"critical": 0, "warning": 1, "info": 2}
@@ -1826,6 +1889,7 @@ def _is_nan(v) -> bool:
     """NaN 判定ヘルパー."""
     try:
         import math
+
         return math.isnan(float(v))
     except (TypeError, ValueError):
         return True
@@ -1850,52 +1914,116 @@ _NEWS_TICKERS = {
 _IMPACT_KEYWORDS = {
     "金利": {
         "keywords": [
-            "interest rate", "fed", "fomc", "rate hike", "rate cut",
-            "利上げ", "利下げ", "金利", "金融政策", "central bank",
-            "treasury", "yield", "bond", "boj", "日銀",
+            "interest rate",
+            "fed",
+            "fomc",
+            "rate hike",
+            "rate cut",
+            "利上げ",
+            "利下げ",
+            "金利",
+            "金融政策",
+            "central bank",
+            "treasury",
+            "yield",
+            "bond",
+            "boj",
+            "日銀",
         ],
         "icon": "🏦",
         "label": "金利・金融政策",
     },
     "為替": {
         "keywords": [
-            "dollar", "yen", "forex", "currency", "exchange rate",
-            "ドル", "円", "為替", "円安", "円高", "ドル高", "ドル安",
+            "dollar",
+            "yen",
+            "forex",
+            "currency",
+            "exchange rate",
+            "ドル",
+            "円",
+            "為替",
+            "円安",
+            "円高",
+            "ドル高",
+            "ドル安",
         ],
         "icon": "💱",
         "label": "為替",
     },
     "地政学": {
         "keywords": [
-            "tariff", "trade war", "sanction", "geopolit", "war",
-            "conflict", "tension", "関税", "制裁", "紛争", "戦争",
-            "地政学", "トランプ", "trump", "china", "中国",
+            "tariff",
+            "trade war",
+            "sanction",
+            "geopolit",
+            "war",
+            "conflict",
+            "tension",
+            "関税",
+            "制裁",
+            "紛争",
+            "戦争",
+            "地政学",
+            "トランプ",
+            "trump",
+            "china",
+            "中国",
         ],
         "icon": "🌍",
         "label": "地政学・貿易",
     },
     "景気": {
         "keywords": [
-            "gdp", "recession", "inflation", "cpi", "employment",
-            "jobs", "unemployment", "consumer", "pmi",
-            "景気", "インフレ", "雇用", "消費", "gdp", "リセッション",
+            "gdp",
+            "recession",
+            "inflation",
+            "cpi",
+            "employment",
+            "jobs",
+            "unemployment",
+            "consumer",
+            "pmi",
+            "景気",
+            "インフレ",
+            "雇用",
+            "消費",
+            "gdp",
+            "リセッション",
         ],
         "icon": "📊",
         "label": "景気・経済指標",
     },
     "テクノロジー": {
         "keywords": [
-            "ai", "artificial intelligence", "semiconductor", "chip",
-            "tech", "software", "cloud", "nvidia", "半導体",
-            "人工知能", "テック", "クラウド",
+            "ai",
+            "artificial intelligence",
+            "semiconductor",
+            "chip",
+            "tech",
+            "software",
+            "cloud",
+            "nvidia",
+            "半導体",
+            "人工知能",
+            "テック",
+            "クラウド",
         ],
         "icon": "💻",
         "label": "テクノロジー",
     },
     "エネルギー": {
         "keywords": [
-            "oil", "opec", "energy", "gas", "crude", "petroleum",
-            "原油", "石油", "エネルギー", "opec",
+            "oil",
+            "opec",
+            "energy",
+            "gas",
+            "crude",
+            "petroleum",
+            "原油",
+            "石油",
+            "エネルギー",
+            "opec",
         ],
         "icon": "⛽",
         "label": "エネルギー",
@@ -1916,11 +2044,13 @@ def _classify_news_impact(title: str) -> list[dict]:
     for cat_id, cat_info in _IMPACT_KEYWORDS.items():
         for kw in cat_info["keywords"]:
             if kw in title_lower:
-                categories.append({
-                    "category": cat_id,
-                    "icon": cat_info["icon"],
-                    "label": cat_info["label"],
-                })
+                categories.append(
+                    {
+                        "category": cat_id,
+                        "icon": cat_info["icon"],
+                        "label": cat_info["label"],
+                    }
+                )
                 break
     return categories
 
@@ -1984,8 +2114,7 @@ def _estimate_portfolio_impact(
 
         # テクノロジー影響
         if "テクノロジー" in cat_ids:
-            if any(w in sector for w in ["technology", "テクノロジー", "情報通信",
-                                          "semiconductor", "半導体"]):
+            if any(w in sector for w in ["technology", "テクノロジー", "情報通信", "semiconductor", "半導体"]):
                 affected.append(symbol)
                 reasons.append(f"{symbol}: テクノロジーセクター")
 
@@ -1997,8 +2126,7 @@ def _estimate_portfolio_impact(
 
         # 地政学影響: 貿易関連、中国関連
         if "地政学" in cat_ids:
-            if any(w in sector for w in ["industrial", "製造", "consumer",
-                                          "自動車", "automobile"]):
+            if any(w in sector for w in ["industrial", "製造", "consumer", "自動車", "automobile"]):
                 affected.append(symbol)
                 reasons.append(f"{symbol}: 貿易影響セクター")
 
@@ -2079,21 +2207,23 @@ def fetch_economic_news(
                     continue
                 seen_titles.add(title)
 
-                all_news.append({
-                    "title": title,
-                    "publisher": item.get("publisher", ""),
-                    "link": item.get("link", ""),
-                    "publish_time": item.get("publish_time", ""),
-                    "source_ticker": ticker,
-                    "source_name": name,
-                    "categories": [],
-                    "portfolio_impact": {
-                        "impact_level": "none",
-                        "affected_holdings": [],
-                        "reason": "",
-                    },
-                    "analysis_method": "keyword",
-                })
+                all_news.append(
+                    {
+                        "title": title,
+                        "publisher": item.get("publisher", ""),
+                        "link": item.get("link", ""),
+                        "publish_time": item.get("publish_time", ""),
+                        "source_ticker": ticker,
+                        "source_name": name,
+                        "categories": [],
+                        "portfolio_impact": {
+                            "impact_level": "none",
+                            "affected_holdings": [],
+                            "reason": "",
+                        },
+                        "analysis_method": "keyword",
+                    }
+                )
         except Exception:
             continue
 
@@ -2127,7 +2257,9 @@ def fetch_economic_news(
         for news_item in all_news:
             categories = _classify_news_impact(news_item["title"])
             impact = _estimate_portfolio_impact(
-                categories, positions or [], fx_rates or {},
+                categories,
+                positions or [],
+                fx_rates or {},
             )
             news_item["categories"] = categories
             news_item["portfolio_impact"] = impact
@@ -2144,9 +2276,7 @@ def fetch_economic_news(
     )
     # publish_time 降順にしつつ impact が高いものを先頭に
     all_news.sort(
-        key=lambda x: _impact_order.get(
-            x["portfolio_impact"]["impact_level"], 9
-        ),
+        key=lambda x: _impact_order.get(x["portfolio_impact"]["impact_level"], 9),
     )
 
     return all_news
