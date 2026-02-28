@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import math
 import sys
 from pathlib import Path
 
@@ -30,7 +29,6 @@ from src.core.models import (
 )
 from src.core.ticker_utils import cash_currency, infer_country, infer_currency
 from src.core.value_trap import _finite_or_none, detect_value_trap
-
 
 # ---------------------------------------------------------------------------
 # src/core/common.py
@@ -369,25 +367,29 @@ class TestDetectValueTrap:
 
     def test_multiple_conditions_can_trigger_simultaneously(self):
         """複数条件が同時に満たされると理由が複数列挙される."""
-        result = detect_value_trap({
-            "per": 5.0,
-            "eps_growth": -0.2,
-            "revenue_growth": -0.15,
-            "pbr": 0.4,
-            "roe": 0.02,
-        })
+        result = detect_value_trap(
+            {
+                "per": 5.0,
+                "eps_growth": -0.2,
+                "revenue_growth": -0.15,
+                "pbr": 0.4,
+                "roe": 0.02,
+            }
+        )
         assert result["is_trap"] is True
         assert len(result["reasons"]) >= 2
 
     def test_healthy_stock_returns_no_trap(self):
         """健全な指標の銘柄はトラップなしを返す."""
-        result = detect_value_trap({
-            "per": 20.0,
-            "pbr": 2.0,
-            "roe": 0.15,
-            "eps_growth": 0.10,
-            "revenue_growth": 0.08,
-        })
+        result = detect_value_trap(
+            {
+                "per": 20.0,
+                "pbr": 2.0,
+                "roe": 0.15,
+                "eps_growth": 0.10,
+                "revenue_growth": 0.08,
+            }
+        )
         assert result["is_trap"] is False
         assert result["reasons"] == []
 
@@ -690,10 +692,20 @@ class TestSimulationResult:
         result = SimulationResult.empty()
         d = result.to_dict()
         expected_keys = {
-            "scenarios", "target", "target_year_base", "target_year_optimistic",
-            "target_year_pessimistic", "required_monthly", "dividend_effect",
-            "dividend_effect_pct", "years", "monthly_add", "reinvest_dividends",
-            "current_value", "portfolio_return_base", "dividend_yield",
+            "scenarios",
+            "target",
+            "target_year_base",
+            "target_year_optimistic",
+            "target_year_pessimistic",
+            "required_monthly",
+            "dividend_effect",
+            "dividend_effect_pct",
+            "years",
+            "monthly_add",
+            "reinvest_dividends",
+            "current_value",
+            "portfolio_return_base",
+            "dividend_yield",
         }
         assert expected_keys.issubset(d.keys())
 

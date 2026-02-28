@@ -6,7 +6,6 @@ these classes are used internally and provide to_dict() for conversion.
 """
 
 from dataclasses import asdict, dataclass, field
-from typing import Optional, Union
 
 
 @dataclass
@@ -57,6 +56,7 @@ class Position:
     @property
     def is_cash(self) -> bool:
         from src.core.common import is_cash
+
         return is_cash(self.symbol)
 
     def to_dict(self) -> dict:
@@ -100,9 +100,9 @@ class ForecastResult:
 
     symbol: str
     method: str
-    base: Optional[float] = None
-    optimistic: Optional[float] = None
-    pessimistic: Optional[float] = None
+    base: float | None = None
+    optimistic: float | None = None
+    pessimistic: float | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -210,11 +210,11 @@ class SimulationResult:
     """複利シミュレーション結果 (KIK-366)."""
 
     scenarios: dict[str, list[YearlySnapshot]]
-    target: Optional[float]
-    target_year_base: Optional[float]
-    target_year_optimistic: Optional[float]
-    target_year_pessimistic: Optional[float]
-    required_monthly: Optional[float]
+    target: float | None
+    target_year_base: float | None
+    target_year_optimistic: float | None
+    target_year_pessimistic: float | None
+    required_monthly: float | None
     dividend_effect: float
     dividend_effect_pct: float
 
@@ -222,15 +222,12 @@ class SimulationResult:
     monthly_add: float = 0.0
     reinvest_dividends: bool = True
     current_value: float = 0.0
-    portfolio_return_base: Union[float, None] = None
+    portfolio_return_base: float | None = None
     dividend_yield: float = 0.0
 
     def to_dict(self) -> dict:
         result = {
-            "scenarios": {
-                key: [s.to_dict() for s in snapshots]
-                for key, snapshots in self.scenarios.items()
-            },
+            "scenarios": {key: [s.to_dict() for s in snapshots] for key, snapshots in self.scenarios.items()},
             "target": self.target,
             "target_year_base": self.target_year_base,
             "target_year_optimistic": self.target_year_optimistic,

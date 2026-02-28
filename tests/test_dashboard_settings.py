@@ -6,13 +6,11 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 # settings_store を import できるよう path を追加
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
-from components.settings_store import load_settings, save_settings, DEFAULTS
+from components.settings_store import DEFAULTS, load_settings, save_settings
 
 
 class TestLoadSettings:

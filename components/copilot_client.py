@@ -21,8 +21,7 @@ import shutil
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -70,13 +69,13 @@ class CLICallLog:
 
     timestamp: float
     model: str
-    prompt_preview: str      # プロンプトの先頭部分
+    prompt_preview: str  # プロンプトの先頭部分
     success: bool
     duration_sec: float
-    response_length: int     # 応答の文字数
-    response_preview: str    # 応答の先頭部分
-    error: str               # エラーメッセージ（成功時は空）
-    source: str              # 呼び出し元の識別子（例: "news_analysis"）
+    response_length: int  # 応答の文字数
+    response_preview: str  # 応答の先頭部分
+    error: str  # エラーメッセージ（成功時は空）
+    source: str  # 呼び出し元の識別子（例: "news_analysis"）
 
 
 _execution_logs: list[CLICallLog] = []
@@ -137,6 +136,7 @@ def _record_log(
 # CLI 存在確認
 # =====================================================================
 
+
 def is_available() -> bool:
     """GitHub Copilot CLI (``copilot`` コマンド) が利用可能か判定する.
 
@@ -160,6 +160,7 @@ def is_available() -> bool:
 # =====================================================================
 # CLI 呼び出し
 # =====================================================================
+
 
 def call(
     prompt: str,
@@ -192,9 +193,11 @@ def call(
 
     cmd = [
         "copilot",
-        "-p", prompt,
+        "-p",
+        prompt,
         "-s",
-        "--model", mdl,
+        "--model",
+        mdl,
     ]
 
     t0 = time.time()
@@ -213,8 +216,12 @@ def call(
             err_msg = f"rc={result.returncode}: {stderr[:200]}"
             logger.warning("[copilot_client] CLI error: %s", err_msg)
             _record_log(
-                model=mdl, prompt=prompt, success=False,
-                duration=duration, response=None, error=err_msg,
+                model=mdl,
+                prompt=prompt,
+                success=False,
+                duration=duration,
+                response=None,
+                error=err_msg,
                 source=source,
             )
             return None
@@ -222,11 +229,18 @@ def call(
         output = result.stdout.strip()
         logger.info(
             "[copilot_client] success model=%s duration=%.1fs len=%d source=%s",
-            mdl, duration, len(output), source,
+            mdl,
+            duration,
+            len(output),
+            source,
         )
         _record_log(
-            model=mdl, prompt=prompt, success=True,
-            duration=duration, response=output, error="",
+            model=mdl,
+            prompt=prompt,
+            success=True,
+            duration=duration,
+            response=output,
+            error="",
             source=source,
         )
         return output
@@ -236,8 +250,12 @@ def call(
         err_msg = f"timeout ({timeout}s)"
         logger.warning("[copilot_client] %s", err_msg)
         _record_log(
-            model=mdl, prompt=prompt, success=False,
-            duration=duration, response=None, error=err_msg,
+            model=mdl,
+            prompt=prompt,
+            success=False,
+            duration=duration,
+            response=None,
+            error=err_msg,
             source=source,
         )
         return None
@@ -247,8 +265,12 @@ def call(
         err_msg = "copilot command not found"
         logger.warning("[copilot_client] %s", err_msg)
         _record_log(
-            model=mdl, prompt=prompt, success=False,
-            duration=duration, response=None, error=err_msg,
+            model=mdl,
+            prompt=prompt,
+            success=False,
+            duration=duration,
+            response=None,
+            error=err_msg,
             source=source,
         )
         return None
@@ -258,8 +280,12 @@ def call(
         err_msg = f"unexpected: {exc}"
         logger.warning("[copilot_client] %s", err_msg)
         _record_log(
-            model=mdl, prompt=prompt, success=False,
-            duration=duration, response=None, error=err_msg,
+            model=mdl,
+            prompt=prompt,
+            success=False,
+            duration=duration,
+            response=None,
+            error=err_msg,
             source=source,
         )
         return None

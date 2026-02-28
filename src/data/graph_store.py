@@ -5,4 +5,4 @@ Why: External callers import from ``src.data.graph_store``.
 How: Re-export all public names from the ``src.data.graph`` package.
 """
 
-from src.data.graph import *  # noqa: F401,F403
+from src.data.graph import *  # noqa: F403

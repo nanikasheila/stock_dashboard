@@ -9,7 +9,6 @@ How: Delegates driver access to ``connection._get_driver()``.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from src.data.graph.connection import _get_driver, _get_mode  # noqa: F401 (re-used by callers)
 
@@ -84,6 +83,7 @@ _VECTOR_INDEXES = [
 # Schema initialisation
 # ---------------------------------------------------------------------------
 
+
 def init_schema() -> bool:
     """Create constraints and indexes. Returns True on success.
 
@@ -115,12 +115,13 @@ def init_schema() -> bool:
 # Embedding helper (KIK-420)
 # ---------------------------------------------------------------------------
 
+
 def _set_embedding(
     session,
     label: str,
     node_id: str,
     semantic_summary: str = "",
-    embedding: Optional[list[float]] = None,
+    embedding: list[float] | None = None,
 ) -> None:
     """Set semantic_summary and embedding on a node if provided.
 

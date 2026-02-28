@@ -1,37 +1,35 @@
 """Financial indicators and value-score calculation."""
 
-from typing import Optional
 
-
-def is_undervalued_per(per: Optional[float], threshold: float = 15.0) -> bool:
+def is_undervalued_per(per: float | None, threshold: float = 15.0) -> bool:
     """Return True if PER indicates undervaluation (0 < per < threshold)."""
     if per is None:
         return False
     return 0 < per < threshold
 
 
-def is_undervalued_pbr(pbr: Optional[float], threshold: float = 1.0) -> bool:
+def is_undervalued_pbr(pbr: float | None, threshold: float = 1.0) -> bool:
     """Return True if PBR indicates undervaluation (0 < pbr < threshold)."""
     if pbr is None:
         return False
     return 0 < pbr < threshold
 
 
-def has_good_dividend(dividend_yield: Optional[float], min_yield: float = 0.03) -> bool:
+def has_good_dividend(dividend_yield: float | None, min_yield: float = 0.03) -> bool:
     """Return True if dividend yield meets the minimum threshold."""
     if dividend_yield is None:
         return False
     return dividend_yield >= min_yield
 
 
-def has_good_roe(roe: Optional[float], min_roe: float = 0.08) -> bool:
+def has_good_roe(roe: float | None, min_roe: float = 0.08) -> bool:
     """Return True if ROE meets the minimum threshold."""
     if roe is None:
         return False
     return roe >= min_roe
 
 
-def _score_per(per: Optional[float], per_max: float) -> float:
+def _score_per(per: float | None, per_max: float) -> float:
     """PER score (25 points max). Lower PER = higher score."""
     if per is None or per <= 0:
         return 0.0
@@ -42,7 +40,7 @@ def _score_per(per: Optional[float], per_max: float) -> float:
     return round(score, 2)
 
 
-def _score_pbr(pbr: Optional[float], pbr_max: float) -> float:
+def _score_pbr(pbr: float | None, pbr_max: float) -> float:
     """PBR score (25 points max). Lower PBR = higher score."""
     if pbr is None or pbr <= 0:
         return 0.0
@@ -52,7 +50,7 @@ def _score_pbr(pbr: Optional[float], pbr_max: float) -> float:
     return round(score, 2)
 
 
-def _score_dividend(dividend_yield: Optional[float], div_min: float) -> float:
+def _score_dividend(dividend_yield: float | None, div_min: float) -> float:
     """Dividend yield score (20 points max). Higher yield = higher score."""
     if dividend_yield is None or dividend_yield <= 0:
         return 0.0
@@ -62,7 +60,7 @@ def _score_dividend(dividend_yield: Optional[float], div_min: float) -> float:
     return round(20.0 * ratio, 2)
 
 
-def _score_roe(roe: Optional[float], roe_min: float) -> float:
+def _score_roe(roe: float | None, roe_min: float) -> float:
     """ROE score (15 points max). Higher ROE = higher score."""
     if roe is None or roe <= 0:
         return 0.0
@@ -72,7 +70,7 @@ def _score_roe(roe: Optional[float], roe_min: float) -> float:
     return round(15.0 * ratio, 2)
 
 
-def _score_growth(revenue_growth: Optional[float]) -> float:
+def _score_growth(revenue_growth: float | None) -> float:
     """Revenue growth score (15 points max). Higher growth = higher score."""
     if revenue_growth is None:
         return 0.0
@@ -84,7 +82,7 @@ def _score_growth(revenue_growth: Optional[float]) -> float:
     return round(15.0 * ratio, 2)
 
 
-def calculate_value_score(stock_data: dict, thresholds: Optional[dict] = None) -> float:
+def calculate_value_score(stock_data: dict, thresholds: dict | None = None) -> float:
     """Calculate a composite value score (0-100) for a stock.
 
     Breakdown:
@@ -116,9 +114,7 @@ def calculate_value_score(stock_data: dict, thresholds: Optional[dict] = None) -
     pbr = stock_data.get("priceToBook") or stock_data.get("pbr")
     # Prefer trailing (actual) dividend yield, fallback to forward/predicted
     div_yield = (
-        stock_data.get("dividend_yield_trailing")
-        or stock_data.get("dividendYield")
-        or stock_data.get("dividend_yield")
+        stock_data.get("dividend_yield_trailing") or stock_data.get("dividendYield") or stock_data.get("dividend_yield")
     )
     roe = stock_data.get("returnOnEquity") or stock_data.get("roe")
     growth = stock_data.get("revenueGrowth") or stock_data.get("revenue_growth")
@@ -162,13 +158,15 @@ def calculate_shareholder_return_history(stock: dict) -> list[dict]:
         total_rate = None
         if market_cap is not None and market_cap > 0:
             total_rate = total / market_cap
-        return [{
-            "fiscal_year": None,
-            "dividend_paid": dividend_paid,
-            "stock_repurchase": stock_repurchase,
-            "total_return_amount": total,
-            "total_return_rate": total_rate,
-        }]
+        return [
+            {
+                "fiscal_year": None,
+                "dividend_paid": dividend_paid,
+                "stock_repurchase": stock_repurchase,
+                "total_return_amount": total,
+                "total_return_rate": total_rate,
+            }
+        ]
 
     n = max(len(div_hist), len(rep_hist))
     results: list[dict] = []
@@ -180,21 +178,23 @@ def calculate_shareholder_return_history(stock: dict) -> list[dict]:
         dividend_paid = abs(div_raw) if div_raw is not None else None
         stock_repurchase = abs(rep_raw) if rep_raw is not None else None
 
-        total: Optional[float] = None
+        total: float | None = None
         if dividend_paid is not None or stock_repurchase is not None:
             total = (dividend_paid or 0.0) + (stock_repurchase or 0.0)
 
-        total_rate: Optional[float] = None
+        total_rate: float | None = None
         if market_cap is not None and market_cap > 0 and total is not None:
             total_rate = total / market_cap
 
-        results.append({
-            "fiscal_year": fy,
-            "dividend_paid": dividend_paid,
-            "stock_repurchase": stock_repurchase,
-            "total_return_amount": total,
-            "total_return_rate": total_rate,
-        })
+        results.append(
+            {
+                "fiscal_year": fy,
+                "dividend_paid": dividend_paid,
+                "stock_repurchase": stock_repurchase,
+                "total_return_amount": total,
+                "total_return_rate": total_rate,
+            }
+        )
 
     return results
 
@@ -217,11 +217,7 @@ def assess_return_stability(history: list[dict]) -> dict:
 
     Returns dict with keys: stability, label, latest_rate, avg_rate, reason.
     """
-    rates = [
-        e.get("total_return_rate")
-        for e in history
-        if e.get("total_return_rate") is not None
-    ]
+    rates = [e.get("total_return_rate") for e in history if e.get("total_return_rate") is not None]
 
     # No data at all (KIK-388)
     if len(rates) == 0:
@@ -358,7 +354,8 @@ def calculate_shareholder_return(stock: dict) -> dict:
 # Consistency checks (analysis.md – 再発防止)
 # ---------------------------------------------------------------------------
 
-def check_eps_direction(stock: dict) -> Optional[dict]:
+
+def check_eps_direction(stock: dict) -> dict | None:
     """Check if FwdEPS < TrailEPS (earnings decline forecast).
 
     Returns a warning dict or None if no issue detected.
@@ -374,10 +371,7 @@ def check_eps_direction(stock: dict) -> Optional[dict]:
         return {
             "level": "warning",
             "code": "EPS_DECLINE",
-            "message": (
-                f"🔴 減益予想: FwdEPS {forward_eps:.1f} < TrailEPS "
-                f"{trailing_eps:.1f} ({growth:+.1f}%)"
-            ),
+            "message": (f"🔴 減益予想: FwdEPS {forward_eps:.1f} < TrailEPS {trailing_eps:.1f} ({growth:+.1f}%)"),
             "forward_eps": forward_eps,
             "trailing_eps": trailing_eps,
             "growth_pct": round(growth, 2),
@@ -385,7 +379,7 @@ def check_eps_direction(stock: dict) -> Optional[dict]:
     return None
 
 
-def check_growth_consistency(stock: dict) -> Optional[dict]:
+def check_growth_consistency(stock: dict) -> dict | None:
     """Check if PEG denominator (earningsGrowth) contradicts FwdEPS direction.
 
     earningsGrowth is backward-looking; FwdEPS is forward-looking.
@@ -404,16 +398,13 @@ def check_growth_consistency(stock: dict) -> Optional[dict]:
     if trailing_eps < 0:
         return None
 
-    fwd_growth = (forward_eps / trailing_eps - 1)
+    fwd_growth = forward_eps / trailing_eps - 1
     # earningsGrowth positive but forward decline
     if earnings_growth > 0.05 and fwd_growth < -0.02:
         peg_past = None
         if forward_per is not None and earnings_growth > 0:
             peg_past = forward_per / (earnings_growth * 100)
-        msg = (
-            f"⚠️ PEG矛盾: 過去earningsGrowth {earnings_growth*100:+.1f}% "
-            f"だがFwdEPS成長率 {fwd_growth*100:+.1f}%。"
-        )
+        msg = f"⚠️ PEG矛盾: 過去earningsGrowth {earnings_growth * 100:+.1f}% だがFwdEPS成長率 {fwd_growth * 100:+.1f}%。"
         if peg_past is not None:
             msg += f" PEG({peg_past:.2f})は過去ベースで将来を反映していない"
         return {
@@ -427,7 +418,7 @@ def check_growth_consistency(stock: dict) -> Optional[dict]:
     return None
 
 
-def check_margin_deterioration(stock: dict) -> Optional[dict]:
+def check_margin_deterioration(stock: dict) -> dict | None:
     """Check if gross margin declined significantly (>= 5pt) across fiscal years.
 
     Uses revenue_history and gross_profit data if available, otherwise
@@ -445,10 +436,7 @@ def check_margin_deterioration(stock: dict) -> Optional[dict]:
                 return {
                     "level": "warning",
                     "code": "MARGIN_DETERIORATION",
-                    "message": (
-                        f"⚠️ 粗利率悪化: {previous*100:.1f}% → "
-                        f"{latest*100:.1f}% ({delta_pt:+.1f}pt)"
-                    ),
+                    "message": (f"⚠️ 粗利率悪化: {previous * 100:.1f}% → {latest * 100:.1f}% ({delta_pt:+.1f}pt)"),
                     "latest": latest,
                     "previous": previous,
                     "delta_pt": round(delta_pt, 2),
@@ -456,7 +444,7 @@ def check_margin_deterioration(stock: dict) -> Optional[dict]:
     return None
 
 
-def check_quarterly_eps_trend(stock: dict) -> Optional[dict]:
+def check_quarterly_eps_trend(stock: dict) -> dict | None:
     """Check if the most recent quarterly EPS declined QoQ.
 
     Uses quarterly_eps list (latest-first) if available.
@@ -473,10 +461,7 @@ def check_quarterly_eps_trend(stock: dict) -> Optional[dict]:
         return {
             "level": "caution",
             "code": "EPS_DECELERATION",
-            "message": (
-                f"⚠️ 四半期EPS鈍化: {previous:.2f} → "
-                f"{latest:.2f} ({change_pct:+.1f}% QoQ)"
-            ),
+            "message": (f"⚠️ 四半期EPS鈍化: {previous:.2f} → {latest:.2f} ({change_pct:+.1f}% QoQ)"),
             "latest_q_eps": latest,
             "previous_q_eps": previous,
             "change_pct": round(change_pct, 2),
