@@ -31,9 +31,9 @@ class _HistoryEncoder(json.JSONEncoder):
     """Custom encoder for numpy types and NaN/Inf values."""
 
     def default(self, obj):
-        if isinstance(obj, (np.integer,)):
+        if isinstance(obj, np.integer):
             return int(obj)
-        if isinstance(obj, (np.floating,)):
+        if isinstance(obj, np.floating):
             if np.isnan(obj) or np.isinf(obj):
                 return None
             return float(obj)
@@ -50,9 +50,9 @@ def _sanitize(obj):
         return {k: _sanitize(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_sanitize(v) for v in obj]
-    if isinstance(obj, (np.integer,)):
+    if isinstance(obj, np.integer):
         return int(obj)
-    if isinstance(obj, (np.floating,)):
+    if isinstance(obj, np.floating):
         if np.isnan(obj) or np.isinf(obj):
             return None
         return float(obj)

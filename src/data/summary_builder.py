@@ -134,7 +134,7 @@ def build_research_summary(
         if name:
             parts.append(name)
         news = grok.get("recent_news") or result.get("news") or []
-        if news and isinstance(news, list) and isinstance(news[0], (str, dict)):
+        if news and isinstance(news, list) and isinstance(news[0], str | dict):
             headline = news[0] if isinstance(news[0], str) else news[0].get("title", "")
             headline = headline.split("<")[0].strip()
             if headline:
