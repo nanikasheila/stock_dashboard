@@ -23,6 +23,15 @@
     }
   },
   "agents": {
-    "model": "Claude Sonnet 4.6 (copilot)"
+    "model": "Claude Sonnet 4.6 (copilot)",
+    "architect": {
+      "model": "Claude Opus 4.6 (copilot)"
+    },
+    "assessor": {
+      "model": "Claude Opus 4.6 (copilot)"
+    },
+    "manager": {
+      "model": "Claude Opus 4.6 (copilot)"
+    }
   }
 }
