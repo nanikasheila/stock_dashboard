@@ -278,6 +278,74 @@ def sell_position(
     return result
 
 
+def update_cash_position(
+    csv_path: str,
+    currency: str,
+    amount_delta: float,
+    trade_date: str,
+) -> dict:
+    """Update the cash balance for a given currency after a trade.
+
+    Why: When stocks are bought or sold, the corresponding cash deposit
+         (預り金) must be adjusted. Sell proceeds increase cash; buy
+         payments decrease it. This keeps the portfolio CSV an accurate
+         record of available cash by currency.
+    How: Locates the ``{CURRENCY}.CASH`` row in the portfolio CSV.
+         Adds *amount_delta* to its ``cost_price`` (which stores the
+         balance since ``shares`` is always 1). Creates the row when
+         it does not exist. Negative balances are permitted — they
+         represent external deposits (預金→投資 振替) that the user
+         implicitly made.
+
+    Parameters
+    ----------
+    csv_path : str
+        Absolute path to the portfolio CSV file.
+    currency : str
+        ISO currency code (e.g. ``"JPY"``, ``"USD"``).
+    amount_delta : float
+        Change to the cash balance. Positive for sell proceeds,
+        negative for buy payments.
+    trade_date : str
+        Date of the trade (``YYYY-MM-DD``). Used to update the
+        ``purchase_date`` column of the cash row.
+
+    Returns
+    -------
+    dict
+        Updated cash position dict.
+    """
+    cash_symbol = f"{currency.upper()}.CASH"
+    portfolio = load_portfolio(csv_path)
+
+    existing = None
+    for pos in portfolio:
+        if pos["symbol"].upper() == cash_symbol.upper():
+            existing = pos
+            break
+
+    if existing is not None:
+        existing["cost_price"] = round(existing["cost_price"] + amount_delta, 2)
+        # Why: cash rows reuse purchase_date to store last-updated date;
+        #      no dedicated column in the CSV schema.
+        existing["purchase_date"] = trade_date
+        result = dict(existing)
+    else:
+        new_pos = {
+            "symbol": cash_symbol,
+            "shares": 1,
+            "cost_price": round(amount_delta, 2),
+            "cost_currency": currency.upper(),
+            "purchase_date": trade_date,
+            "memo": "預り金",
+        }
+        portfolio.append(new_pos)
+        result = dict(new_pos)
+
+    save_portfolio(portfolio, csv_path)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # FX rate fetching
 # ---------------------------------------------------------------------------

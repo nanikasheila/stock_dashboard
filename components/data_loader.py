@@ -239,15 +239,17 @@ def get_current_snapshot(
         })
         total_value_jpy += eval_jpy
 
-    # 実現損益の計算
+    # 実現損益・含み損益の計算（総平均法）
     trades = _build_holdings_timeline()
     realized = _compute_realized_pnl(trades, fx_rates)
+    pnl_ma = _compute_pnl_moving_average(trades, fx_rates, result_positions)
 
     return {
         "positions": result_positions,
         "total_value_jpy": total_value_jpy,
         "fx_rates": fx_rates,
         "realized_pnl": realized,
+        "pnl_moving_avg": pnl_ma,
         "as_of": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -309,8 +311,11 @@ def _compute_invested_capital(
 ) -> dict[str, float]:
     """累積投資額(円換算)の推移を返す.
 
-    buy/transfer → +投資額、sell → −売却額
-    受渡金額ではなく shares*price*fx_rate で計算。
+    Why: 投資額の推移を追跡することで月次サマリーの損益計算に使用する。
+    How: buy/transfer → +投資額、sell → −売却額。
+         各取引の受渡金額（settlement_jpy / settlement_usd * fx_rate）を
+         優先的に使用し、フォールバックとして shares*price*fx_rate で計算。
+         これにより取引時点の実際の円換算額に近い精度を実現する。
 
     Returns
     -------
@@ -321,13 +326,9 @@ def _compute_invested_capital(
     invested: dict[str, float] = {}
 
     for trade in trades:
-        shares = trade.get("shares", 0)
-        price = trade.get("price", 0)
-        currency = trade.get("currency", "JPY")
         trade_type = trade.get("trade_type", "buy")
         date_str = trade.get("date", "")
-        rate = fx_rates.get(currency, 1.0)
-        amount_jpy = shares * price * rate
+        amount_jpy = _trade_cost_jpy(trade, fx_rates)
 
         if trade_type in ("buy", "transfer"):
             cumulative += amount_jpy
@@ -496,6 +497,108 @@ def _build_trade_activity(
     result["net_flow"] = result["buy_amount"] - result["sell_amount"]
     result.index.name = None
     return result.sort_index()
+
+
+# ---------------------------------------------------------------------------
+# 2-b. 総平均法による損益計算
+# ---------------------------------------------------------------------------
+
+def _compute_pnl_moving_average(
+    trades: list[dict],
+    fx_rates: dict[str, float],
+    current_positions: list[dict],
+) -> dict:
+    """総平均法（移動平均法）で実現損益と含み損益を計算する.
+
+    Why: 日本の証券会社（SBI証券等）は総平均法を使用しており、
+         FIFO法では実現/含みの配分が証券会社の表示と一致しない。
+         KPIの評価損益を証券会社の値と整合させるため、総平均法で計算する。
+    How: 買い(buy/transfer)時に円建て平均取得単価を更新し、
+         売り(sell)時に平均単価ベースで原価を算出して実現損益を計算。
+         含み損益 = 現在評価額 − 残存保有の取得原価(総平均法ベース)。
+         transfer(price=0)は株式分割として扱い、単価を按分調整する。
+
+    Parameters
+    ----------
+    trades : list[dict]
+        日付順にソートされた取引履歴。
+    fx_rates : dict[str, float]
+        現在のFXレート（フォールバック用）。
+    current_positions : list[dict]
+        get_current_snapshot で構築された銘柄リスト（evaluation_jpy を含む）。
+
+    Returns
+    -------
+    dict
+        realized_by_symbol   : dict[str, float]  銘柄別実現損益(JPY)
+        realized_total_jpy   : float              合計実現損益(JPY)
+        unrealized_by_symbol : dict[str, float]   銘柄別含み損益(JPY)
+        unrealized_total_jpy : float              合計含み損益(JPY)
+        cost_basis           : dict[str, float]   残存ポジションの取得原価(JPY)
+    """
+    # 銘柄ごとの累積保有株数と累積取得原価(JPY)
+    holding_shares: dict[str, float] = defaultdict(float)
+    holding_cost: dict[str, float] = defaultdict(float)
+    realized_by_symbol: dict[str, float] = defaultdict(float)
+
+    for trade in trades:
+        sym = trade.get("symbol", "")
+        trade_type = trade.get("trade_type", "buy")
+        shares = trade.get("shares", 0)
+        price = trade.get("price", 0)
+
+        if is_cash(sym):
+            continue
+
+        if trade_type in ("buy", "transfer"):
+            if trade_type == "transfer" and price <= 0 and holding_shares[sym] > 0:
+                # Why: price=0 の transfer は株式分割を意味する。
+                # How: 既存の取得原価はそのまま維持し、株数だけ増やす。
+                #      結果として1株あたり平均単価が按分される。
+                holding_shares[sym] += shares
+            else:
+                cost_jpy = _trade_cost_jpy(trade, fx_rates)
+                holding_shares[sym] += shares
+                holding_cost[sym] += cost_jpy
+
+        elif trade_type == "sell":
+            proceeds_jpy = _trade_cost_jpy(trade, fx_rates)
+            old_shares = holding_shares[sym]
+
+            if old_shares > 0:
+                avg_cost_per_share = holding_cost[sym] / old_shares
+                cost_of_sold = avg_cost_per_share * shares
+                realized_by_symbol[sym] += proceeds_jpy - cost_of_sold
+                holding_shares[sym] = old_shares - shares
+                holding_cost[sym] -= cost_of_sold
+            else:
+                # Why: 履歴不完全で売りが先に来るケース。
+                realized_by_symbol[sym] += proceeds_jpy
+
+    # 含み損益: 現在の評価額 − 総平均法での残存取得原価
+    unrealized_by_symbol: dict[str, float] = {}
+    for pos in current_positions:
+        sym = pos["symbol"]
+        if is_cash(sym):
+            continue
+        market_value = pos.get("evaluation_jpy", 0)
+        remaining_cost = holding_cost.get(sym, 0)
+        unrealized_by_symbol[sym] = market_value - remaining_cost
+
+    realized_total = sum(realized_by_symbol.values())
+    unrealized_total = sum(unrealized_by_symbol.values())
+
+    return {
+        "realized_by_symbol": dict(realized_by_symbol),
+        "realized_total_jpy": realized_total,
+        "unrealized_by_symbol": unrealized_by_symbol,
+        "unrealized_total_jpy": unrealized_total,
+        "cost_basis": {
+            sym: holding_cost[sym]
+            for sym in holding_shares
+            if holding_shares[sym] > 0.5
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -702,13 +805,15 @@ def build_portfolio_history(
                 break
         return result
 
-    # 日次評価額の計算
+    # 日次評価額・保有株数の計算
     eval_data: dict[str, list[float]] = {s: [] for s in stock_symbols}
+    shares_data: dict[str, list[int]] = {s: [] for s in stock_symbols}
 
     for dt in dates:
         holdings = get_holdings_at(dt)
         for symbol in stock_symbols:
             shares = holdings.get(symbol, 0)
+            shares_data[symbol].append(shares)
             if shares > 0 and symbol in price_df.columns:
                 price_val = price_df.loc[dt, symbol]
                 if pd.notna(price_val):
@@ -733,8 +838,23 @@ def build_portfolio_history(
     if zero_cols:
         result_df = result_df.drop(columns=zero_cols)
 
-    # 合計列
+    # 合計列（株式のみ）
     result_df["total"] = result_df.sum(axis=1)
+
+    # 現金ポジションを合計に加算
+    # Why: KPI のトータル資産と月次サマリーの月末評価額を一致させるため、
+    #      現金も資産合計に含める。
+    # How: portfolio.csv の現金ポジション (*.CASH) を FX 換算し定額加算する。
+    #      過去日付には厳密でないが、直近値の整合性を優先する。
+    _portfolio_for_cash = load_portfolio(csv_path)
+    _cash_total_jpy = 0.0
+    for _pos in _portfolio_for_cash:
+        if is_cash(_pos["symbol"]):
+            _cash_cur = _pos["symbol"].replace(".CASH", "")
+            _cash_rate = fx_rates.get(_cash_cur, 1.0)
+            _cash_total_jpy += _pos["shares"] * _pos["cost_price"] * _cash_rate
+    if _cash_total_jpy > 0:
+        result_df["total"] += _cash_total_jpy
 
     # 累積投資額列の追加
     invested_map = _compute_invested_capital(trades, fx_rates)
@@ -755,6 +875,21 @@ def build_portfolio_history(
     if stock_cols:
         label_map = _build_symbol_labels(stock_cols)
         result_df = result_df.rename(columns=label_map)
+
+        # Why: compute_top_worst_performers compares day-over-day evaluation
+        #      amounts. When shares change (buy/sell), the evaluation jump
+        #      includes both price movement and position-size change.
+        # How: Store a parallel DataFrame of share counts with matching
+        #      index and column labels.  Downstream consumers divide
+        #      evaluation by shares to isolate pure price returns.
+        _shares_raw = pd.DataFrame(shares_data, index=dates)
+        _shares_raw = _shares_raw[_shares_raw.index >= first_trade_date]
+        if zero_cols:
+            _sz = [c for c in zero_cols if c in _shares_raw.columns]
+            if _sz:
+                _shares_raw = _shares_raw.drop(columns=_sz)
+        _shares_raw = _shares_raw.rename(columns=label_map)
+        result_df.attrs["_shares_df"] = _shares_raw
 
     return result_df
 
@@ -990,6 +1125,13 @@ def compute_top_worst_performers(
 ) -> dict:
     """直近1日の銘柄別騰落率ランキングを返す.
 
+    Why: ユーザーがポートフォリオ内でどの銘柄が当日最も動いたかを
+         一目で把握するため。
+    How: 評価額を保有株数で割って1株当たりの評価額（= 株価×為替）を
+         求め、前日比を純粋な価格変動率として算出する。
+         株数データが attrs["_shares_df"] に存在しない場合は
+         評価額ベースにフォールバックする。
+
     Parameters
     ----------
     history_df : pd.DataFrame
@@ -1013,12 +1155,32 @@ def compute_top_worst_performers(
     latest = history_df.iloc[-1]
     previous = history_df.iloc[-2]
 
+    # Why: 評価額 = 株数 × 単価 × 為替 のため、株数変動があると
+    #      前日比が株価変動ではなくポジション変動を反映してしまう。
+    # How: _shares_df があれば株数で割って正規化し、純粋な価格騰落率を算出。
+    shares_df = history_df.attrs.get("_shares_df")
+    if shares_df is not None and len(shares_df) >= 2:
+        latest_shares = shares_df.iloc[-1]
+        prev_shares = shares_df.iloc[-2]
+    else:
+        latest_shares = None
+        prev_shares = None
+
     performers = []
     for col in stock_cols:
         cur = float(latest.get(col, 0))
         prev = float(previous.get(col, 0))
         if prev > 0 and cur > 0:
-            pct = (cur / prev - 1) * 100
+            if latest_shares is not None and prev_shares is not None:
+                cur_sh = float(latest_shares.get(col, 0))
+                prev_sh = float(prev_shares.get(col, 0))
+                if cur_sh > 0 and prev_sh > 0:
+                    # 1株当たり評価額の前日比 = 純粋な価格騰落率
+                    pct = ((cur / cur_sh) / (prev / prev_sh) - 1) * 100
+                else:
+                    pct = (cur / prev - 1) * 100
+            else:
+                pct = (cur / prev - 1) * 100
             change_jpy = cur - prev
             performers.append({
                 "symbol": col,

@@ -30,7 +30,13 @@ except ImportError:  # pragma: no cover — filelock is in requirements.txt
     _FILELOCK_AVAILABLE = False
     logger.warning("filelock not installed; falling back to threading.Lock for CSV writes")
 
-from src.core.portfolio.portfolio_manager import DEFAULT_CSV_PATH, add_position, sell_position
+from src.core.common import is_cash as _is_cash
+from src.core.portfolio.portfolio_manager import (
+    DEFAULT_CSV_PATH,
+    add_position,
+    sell_position,
+    update_cash_position,
+)
 from src.data.history_store import save_trade as _save_trade
 
 
@@ -45,6 +51,86 @@ def _acquire_csv_lock(csv_path: str) -> AbstractContextManager:
     if _FILELOCK_AVAILABLE:
         return _FileLock(f"{csv_path}.lock", timeout=10)
     return _CSV_THREAD_LOCK
+
+
+def _resolve_settlement_amount(
+    currency: str,
+    settlement_jpy: float,
+    settlement_usd: float,
+    shares: int,
+    price: float,
+) -> float:
+    """Determine the effective settlement amount for a trade.
+
+    Why: The trade form allows explicit JPY / USD settlement inputs to
+         capture real brokerage amounts (including commissions).  When
+         neither is provided, ``shares × price`` is a reasonable fallback.
+    How: Pick the settlement field that matches the trade currency.
+         If neither matches (e.g. EUR trades) or both are zero, fall
+         back to ``shares × price``.
+    """
+    if currency == "JPY" and settlement_jpy > 0:
+        return settlement_jpy
+    if currency == "USD" and settlement_usd > 0:
+        return settlement_usd
+    # Why: For non-JPY/USD currencies, or when the user didn't fill in
+    #      the explicit settlement, use the notional amount as fallback.
+    fallback = shares * price
+    return fallback
+
+
+def _update_cash_if_needed(
+    symbol: str,
+    trade_type: str,
+    currency: str,
+    settlement_jpy: float,
+    settlement_usd: float,
+    shares: int,
+    price: float,
+    csv_path: str,
+    trade_date: str,
+) -> None:
+    """Update the cash deposit balance if the trade warrants it.
+
+    Why: Buying a stock consumes cash; selling a stock produces cash.
+         Keeping {CURRENCY}.CASH rows accurate gives the user a live
+         view of available cash by currency.
+    How: Skip if the symbol itself is cash (avoid circular update).
+         Determine the settlement amount from explicit inputs or
+         fallback (shares × price).  Apply as positive delta (sell)
+         or negative delta (buy).  Negative balances are allowed
+         (interpreted as an implicit deposit from savings).
+         Called inside the CSV lock acquired by the caller.
+    """
+    if _is_cash(symbol):
+        return
+
+    settlement_amount = _resolve_settlement_amount(
+        currency=currency,
+        settlement_jpy=settlement_jpy,
+        settlement_usd=settlement_usd,
+        shares=shares,
+        price=price,
+    )
+
+    if settlement_amount <= 0:
+        logger.warning(
+            "Cash position NOT updated: settlement resolved to 0 "
+            "(symbol=%s, shares=%d, price=%.4f)",
+            symbol,
+            shares,
+            price,
+        )
+        return
+
+    cash_delta = settlement_amount if trade_type == "sell" else -settlement_amount
+    updated_cash = update_cash_position(
+        csv_path=csv_path,
+        currency=currency,
+        amount_delta=cash_delta,
+        trade_date=trade_date,
+    )
+    logger.info("Cash position updated: %s", updated_cash)
 
 
 def record_trade(
@@ -69,6 +155,8 @@ def record_trade(
          Step 2 — for buy, add_position updates the CSV under filelock.
                   for sell, sell_position updates the CSV under filelock.
                   for transfer, no CSV update is performed.
+         Step 3 — for buy/sell of non-cash symbols, update the
+                  corresponding {CURRENCY}.CASH deposit balance.
          Raises on any error after logging context for diagnostics.
 
     Parameters
@@ -132,7 +220,10 @@ def record_trade(
     )
     logger.info("Trade JSON saved: %s", saved_json_path)
 
-    # Step 2: Update portfolio CSV (only for buy/sell)
+    # Step 2 + 3: Update portfolio CSV and cash deposit under a single lock
+    # Why: Both position and cash updates operate on the same portfolio CSV.
+    #      A single lock prevents other Streamlit sessions from reading an
+    #      intermediate state (position changed, cash not yet updated).
     if trade_type_lower == "buy":
         try:
             lock = _acquire_csv_lock(csv_path)
@@ -146,7 +237,20 @@ def record_trade(
                     purchase_date=trade_date,
                     memo=memo,
                 )
-            logger.info("Position added/updated: %s", updated_position)
+                logger.info("Position added/updated: %s", updated_position)
+
+                # Step 3: Cash deposit update (buy = negative delta)
+                _update_cash_if_needed(
+                    symbol=symbol,
+                    trade_type=trade_type_lower,
+                    currency=currency,
+                    settlement_jpy=settlement_jpy,
+                    settlement_usd=settlement_usd,
+                    shares=shares,
+                    price=price,
+                    csv_path=csv_path,
+                    trade_date=trade_date,
+                )
         except Exception as exc:
             logger.error(
                 "CSV update failed after JSON save (path=%s, trade=%s %s x%d): %s",
@@ -169,7 +273,20 @@ def record_trade(
                     symbol=symbol,
                     shares=shares,
                 )
-            logger.info("Position sold: %s", updated_position)
+                logger.info("Position sold: %s", updated_position)
+
+                # Step 3: Cash deposit update (sell = positive delta)
+                _update_cash_if_needed(
+                    symbol=symbol,
+                    trade_type=trade_type_lower,
+                    currency=currency,
+                    settlement_jpy=settlement_jpy,
+                    settlement_usd=settlement_usd,
+                    shares=shares,
+                    price=price,
+                    csv_path=csv_path,
+                    trade_date=trade_date,
+                )
         except ValueError:
             # Re-raise as-is so caller can show the user-facing message
             raise
