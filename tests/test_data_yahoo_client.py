@@ -15,7 +15,6 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 import src.data.yahoo_client as yahoo_client
 
-
 # ---------------------------------------------------------------------------
 # TestSafeGet
 # ---------------------------------------------------------------------------
@@ -211,15 +210,19 @@ class TestGetStockInfo:
     def test_returns_none_when_no_market_price(self, tmp_path):
         """regularMarketPrice が無い場合は None を返す."""
         mock_info = {"shortName": "Test Corp"}  # regularMarketPrice なし
-        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), \
-             patch("yfinance.Ticker", return_value=self._make_mock_ticker(mock_info)):
+        with (
+            patch.object(yahoo_client, "CACHE_DIR", tmp_path),
+            patch("yfinance.Ticker", return_value=self._make_mock_ticker(mock_info)),
+        ):
             result = yahoo_client.get_stock_info("TEST")
         assert result is None
 
     def test_returns_none_on_exception(self, tmp_path):
         """yfinance が例外を投げた場合は None を返す."""
-        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), \
-             patch("yfinance.Ticker", side_effect=Exception("network error")):
+        with (
+            patch.object(yahoo_client, "CACHE_DIR", tmp_path),
+            patch("yfinance.Ticker", side_effect=Exception("network error")),
+        ):
             result = yahoo_client.get_stock_info("TEST")
         assert result is None
 
@@ -237,8 +240,10 @@ class TestGetStockInfo:
             "dividendYield": 0.55,
             "returnOnEquity": 1.60,
         }
-        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), \
-             patch("yfinance.Ticker", return_value=self._make_mock_ticker(mock_info)):
+        with (
+            patch.object(yahoo_client, "CACHE_DIR", tmp_path),
+            patch("yfinance.Ticker", return_value=self._make_mock_ticker(mock_info)),
+        ):
             result = yahoo_client.get_stock_info("AAPL")
 
         assert result is not None
@@ -254,8 +259,10 @@ class TestGetStockInfo:
             "regularMarketPrice": 100.0,
             "dividendYield": 3.87,  # yfinance の percent 形式
         }
-        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), \
-             patch("yfinance.Ticker", return_value=self._make_mock_ticker(mock_info)):
+        with (
+            patch.object(yahoo_client, "CACHE_DIR", tmp_path),
+            patch("yfinance.Ticker", return_value=self._make_mock_ticker(mock_info)),
+        ):
             result = yahoo_client.get_stock_info("VTI")
 
         assert result is not None
@@ -268,8 +275,7 @@ class TestGetStockInfo:
             "price": 99.0,
             "_cached_at": datetime.now().isoformat(),
         }
-        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), \
-             patch("yfinance.Ticker") as mock_ticker_cls:
+        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), patch("yfinance.Ticker") as mock_ticker_cls:
             # キャッシュを事前に書き込む
             path = yahoo_client._cache_path("CACHED")
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -287,8 +293,10 @@ class TestGetStockInfo:
             "regularMarketPrice": 200.0,
             "shortName": "Test Inc.",
         }
-        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), \
-             patch("yfinance.Ticker", return_value=self._make_mock_ticker(mock_info)):
+        with (
+            patch.object(yahoo_client, "CACHE_DIR", tmp_path),
+            patch("yfinance.Ticker", return_value=self._make_mock_ticker(mock_info)),
+        ):
             yahoo_client.get_stock_info("TESTWRITE")
 
         cache_path = tmp_path / "TESTWRITE.json"
@@ -309,9 +317,11 @@ class TestGetMultipleStocks:
         mock_ticker = MagicMock()
         mock_ticker.info = mock_info
 
-        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), \
-             patch("yfinance.Ticker", return_value=mock_ticker), \
-             patch("time.sleep"):  # スリープをスキップ
+        with (
+            patch.object(yahoo_client, "CACHE_DIR", tmp_path),
+            patch("yfinance.Ticker", return_value=mock_ticker),
+            patch("time.sleep"),
+        ):  # スリープをスキップ
             results = yahoo_client.get_multiple_stocks(["A", "B"])
 
         assert "A" in results
@@ -319,9 +329,11 @@ class TestGetMultipleStocks:
 
     def test_none_for_failed_symbol(self, tmp_path):
         """取得失敗した symbol は None になる."""
-        with patch.object(yahoo_client, "CACHE_DIR", tmp_path), \
-             patch("yfinance.Ticker", side_effect=Exception("fail")), \
-             patch("time.sleep"):
+        with (
+            patch.object(yahoo_client, "CACHE_DIR", tmp_path),
+            patch("yfinance.Ticker", side_effect=Exception("fail")),
+            patch("time.sleep"),
+        ):
             results = yahoo_client.get_multiple_stocks(["FAIL"])
 
         assert results["FAIL"] is None

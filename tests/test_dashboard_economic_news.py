@@ -7,9 +7,7 @@ from unittest.mock import patch
 import pytest
 
 # Ensure dashboard components are importable
-_SCRIPTS_DIR = str(
-    Path(__file__).resolve().parents[1]
-)
+_SCRIPTS_DIR = str(Path(__file__).resolve().parents[1])
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
@@ -20,10 +18,10 @@ from components.data_loader import (
     fetch_economic_news,
 )
 
-
 # ---------------------------------------------------------------------------
 # _classify_news_impact tests
 # ---------------------------------------------------------------------------
+
 
 class TestClassifyNewsImpact:
     """Test news title classification into impact categories."""
@@ -81,6 +79,7 @@ class TestClassifyNewsImpact:
 # ---------------------------------------------------------------------------
 # _estimate_portfolio_impact tests
 # ---------------------------------------------------------------------------
+
 
 class TestEstimatePortfolioImpact:
     """Test portfolio impact estimation based on news categories."""
@@ -169,6 +168,7 @@ class TestEstimatePortfolioImpact:
 # fetch_economic_news tests
 # ---------------------------------------------------------------------------
 
+
 class TestFetchEconomicNews:
     """Test the main fetch function with mocked Yahoo client."""
 
@@ -176,8 +176,12 @@ class TestFetchEconomicNews:
     def test_returns_deduplicated_news(self, mock_yc):
         """Same title from different tickers should be deduplicated."""
         mock_yc.get_stock_news.return_value = [
-            {"title": "Markets Rally on Fed Decision", "publisher": "Reuters",
-             "link": "https://example.com/1", "publish_time": "2026-02-22T10:00:00"},
+            {
+                "title": "Markets Rally on Fed Decision",
+                "publisher": "Reuters",
+                "link": "https://example.com/1",
+                "publish_time": "2026-02-22T10:00:00",
+            },
         ]
         result = fetch_economic_news()
         # Even though we query multiple tickers, deduplication should work
@@ -193,8 +197,7 @@ class TestFetchEconomicNews:
     @patch("components.data_loader.yahoo_client")
     def test_includes_source_info(self, mock_yc):
         mock_yc.get_stock_news.return_value = [
-            {"title": "Test News", "publisher": "AP",
-             "link": "https://example.com", "publish_time": "2026-02-22"},
+            {"title": "Test News", "publisher": "AP", "link": "https://example.com", "publish_time": "2026-02-22"},
         ]
         result = fetch_economic_news()
         assert len(result) >= 1
@@ -207,8 +210,7 @@ class TestFetchEconomicNews:
     @patch("components.data_loader.yahoo_client")
     def test_impact_analysis_with_positions(self, mock_yc):
         mock_yc.get_stock_news.return_value = [
-            {"title": "Fed raises interest rate", "publisher": "Reuters",
-             "link": "", "publish_time": "2026-02-22"},
+            {"title": "Fed raises interest rate", "publisher": "Reuters", "link": "", "publish_time": "2026-02-22"},
         ]
         positions = [
             {"symbol": "8306.T", "sector": "Financial Services", "currency": "JPY"},
@@ -228,16 +230,25 @@ class TestFetchEconomicNews:
     @patch("components.data_loader.yahoo_client")
     def test_sorted_by_impact(self, mock_yc):
         """High impact news should appear before low/none impact."""
+
         def mock_news(symbol, count=3):
             if symbol == "^GSPC":
                 return [
-                    {"title": "Generic company report", "publisher": "AP",
-                     "link": "", "publish_time": "2026-02-22T10:00"},
+                    {
+                        "title": "Generic company report",
+                        "publisher": "AP",
+                        "link": "",
+                        "publish_time": "2026-02-22T10:00",
+                    },
                 ]
             elif symbol == "^TNX":
                 return [
-                    {"title": "Fed interest rate decision shocks markets",
-                     "publisher": "WSJ", "link": "", "publish_time": "2026-02-22T09:00"},
+                    {
+                        "title": "Fed interest rate decision shocks markets",
+                        "publisher": "WSJ",
+                        "link": "",
+                        "publish_time": "2026-02-22T09:00",
+                    },
                 ]
             return []
 
@@ -249,29 +260,40 @@ class TestFetchEconomicNews:
         if len(result) >= 2:
             # High-impact news should come first
             first_impact = result[0]["portfolio_impact"]["impact_level"]
-            assert first_impact != "none" or all(
-                n["portfolio_impact"]["impact_level"] == "none" for n in result
-            )
+            assert first_impact != "none" or all(n["portfolio_impact"]["impact_level"] == "none" for n in result)
 
 
 # ---------------------------------------------------------------------------
 # _apply_llm_results tests
 # ---------------------------------------------------------------------------
 
+
 class TestApplyLlmResults:
     """Test merging LLM analysis results into news items."""
 
     def test_apply_basic_results(self):
         news = [
-            {"title": "Fed raises rates", "categories": [], "portfolio_impact": {
-                "impact_level": "none", "affected_holdings": [], "reason": "",
-            }, "analysis_method": "keyword"},
+            {
+                "title": "Fed raises rates",
+                "categories": [],
+                "portfolio_impact": {
+                    "impact_level": "none",
+                    "affected_holdings": [],
+                    "reason": "",
+                },
+                "analysis_method": "keyword",
+            },
         ]
         llm_results = [
-            {"id": 0, "categories": [
-                {"category": "金利", "icon": "🏦", "label": "金利・金融政策"},
-            ], "impact_level": "high", "affected_holdings": ["8306.T"],
-             "reason": "金融セクター直撃"},
+            {
+                "id": 0,
+                "categories": [
+                    {"category": "金利", "icon": "🏦", "label": "金利・金融政策"},
+                ],
+                "impact_level": "high",
+                "affected_holdings": ["8306.T"],
+                "reason": "金融セクター直撃",
+            },
         ]
         _apply_llm_results(news, llm_results)
         assert news[0]["analysis_method"] == "llm"
@@ -281,26 +303,38 @@ class TestApplyLlmResults:
 
     def test_unmatched_ids_not_affected(self):
         news = [
-            {"title": "Test", "categories": [], "portfolio_impact": {
-                "impact_level": "none", "affected_holdings": [], "reason": "",
-            }, "analysis_method": "keyword"},
+            {
+                "title": "Test",
+                "categories": [],
+                "portfolio_impact": {
+                    "impact_level": "none",
+                    "affected_holdings": [],
+                    "reason": "",
+                },
+                "analysis_method": "keyword",
+            },
         ]
         llm_results = [
-            {"id": 99, "categories": [], "impact_level": "high",
-             "affected_holdings": [], "reason": ""},
+            {"id": 99, "categories": [], "impact_level": "high", "affected_holdings": [], "reason": ""},
         ]
         _apply_llm_results(news, llm_results)
         assert news[0]["analysis_method"] == "keyword"
 
     def test_invalid_impact_level_normalized(self):
         news = [
-            {"title": "Test", "categories": [], "portfolio_impact": {
-                "impact_level": "none", "affected_holdings": [], "reason": "",
-            }, "analysis_method": "keyword"},
+            {
+                "title": "Test",
+                "categories": [],
+                "portfolio_impact": {
+                    "impact_level": "none",
+                    "affected_holdings": [],
+                    "reason": "",
+                },
+                "analysis_method": "keyword",
+            },
         ]
         llm_results = [
-            {"id": 0, "categories": [], "impact_level": "critical",
-             "affected_holdings": [], "reason": ""},
+            {"id": 0, "categories": [], "impact_level": "critical", "affected_holdings": [], "reason": ""},
         ]
         _apply_llm_results(news, llm_results)
         assert news[0]["portfolio_impact"]["impact_level"] == "none"
@@ -310,11 +344,12 @@ class TestApplyLlmResults:
     def test_fetch_with_llm_enabled_fallback(self, mock_yc):
         """When llm_enabled=True but copilot CLI unavailable, falls back to keyword."""
         mock_yc.get_stock_news.return_value = [
-            {"title": "Fed raises interest rate", "publisher": "Reuters",
-             "link": "", "publish_time": "2026-02-22"},
+            {"title": "Fed raises interest rate", "publisher": "Reuters", "link": "", "publish_time": "2026-02-22"},
         ]
-        with patch("components.copilot_client.shutil.which", return_value=None), \
-             patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError):
+        with (
+            patch("components.copilot_client.shutil.which", return_value=None),
+            patch("components.copilot_client.subprocess.run", side_effect=FileNotFoundError),
+        ):
             result = fetch_economic_news(llm_enabled=True)
         if result:
             assert result[0]["analysis_method"] == "keyword"
@@ -323,10 +358,13 @@ class TestApplyLlmResults:
     def test_fetch_with_llm_disabled(self, mock_yc):
         """When llm_enabled=False, keyword analysis is used."""
         mock_yc.get_stock_news.return_value = [
-            {"title": "Oil prices surge on OPEC cuts", "publisher": "Reuters",
-             "link": "", "publish_time": "2026-02-22"},
+            {
+                "title": "Oil prices surge on OPEC cuts",
+                "publisher": "Reuters",
+                "link": "",
+                "publish_time": "2026-02-22",
+            },
         ]
         result = fetch_economic_news(llm_enabled=False)
         if result:
             assert result[0]["analysis_method"] == "keyword"
-

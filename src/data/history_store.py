@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -14,6 +13,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _safe_filename(s: str) -> str:
     """Replace '.' and '/' with '_' for filesystem-safe filenames."""
@@ -45,6 +45,7 @@ class _HistoryEncoder(json.JSONEncoder):
 def _sanitize(obj):
     """Recursively convert numpy types and NaN/Inf to JSON-safe values."""
     import math
+
     if isinstance(obj, dict):
         return {k: _sanitize(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -67,41 +68,46 @@ def _sanitize(obj):
 # Embedding helper (KIK-420)
 # ---------------------------------------------------------------------------
 
+
 def _build_embedding(category: str, **kwargs) -> tuple[str, list[float] | None]:
     """Build semantic summary and get embedding vector.
 
     Returns (summary_text, embedding_vector). Both may be empty/None on failure.
     """
     try:
-        from src.data import summary_builder, embedding_client
+        from src.data import embedding_client, summary_builder
     except ImportError:
         return ("", None)
 
     builders = {
         "screen": lambda: summary_builder.build_screen_summary(
-            kwargs.get("date", ""), kwargs.get("preset", ""),
-            kwargs.get("region", ""), kwargs.get("top_symbols")),
+            kwargs.get("date", ""), kwargs.get("preset", ""), kwargs.get("region", ""), kwargs.get("top_symbols")
+        ),
         "report": lambda: summary_builder.build_report_summary(
-            kwargs.get("symbol", ""), kwargs.get("name", ""),
-            kwargs.get("score", 0), kwargs.get("verdict", ""),
-            kwargs.get("sector", "")),
+            kwargs.get("symbol", ""),
+            kwargs.get("name", ""),
+            kwargs.get("score", 0),
+            kwargs.get("verdict", ""),
+            kwargs.get("sector", ""),
+        ),
         "trade": lambda: summary_builder.build_trade_summary(
-            kwargs.get("date", ""), kwargs.get("trade_type", ""),
-            kwargs.get("symbol", ""), kwargs.get("shares", 0),
-            kwargs.get("memo", "")),
-        "health": lambda: summary_builder.build_health_summary(
-            kwargs.get("date", ""), kwargs.get("summary")),
+            kwargs.get("date", ""),
+            kwargs.get("trade_type", ""),
+            kwargs.get("symbol", ""),
+            kwargs.get("shares", 0),
+            kwargs.get("memo", ""),
+        ),
+        "health": lambda: summary_builder.build_health_summary(kwargs.get("date", ""), kwargs.get("summary")),
         "research": lambda: summary_builder.build_research_summary(
-            kwargs.get("research_type", ""), kwargs.get("target", ""),
-            kwargs.get("result", {})),
+            kwargs.get("research_type", ""), kwargs.get("target", ""), kwargs.get("result", {})
+        ),
         "market_context": lambda: summary_builder.build_market_context_summary(
-            kwargs.get("date", ""), kwargs.get("indices"),
-            kwargs.get("grok_research")),
+            kwargs.get("date", ""), kwargs.get("indices"), kwargs.get("grok_research")
+        ),
         "note": lambda: summary_builder.build_note_summary(
-            kwargs.get("symbol", ""), kwargs.get("note_type", ""),
-            kwargs.get("content", "")),
-        "watchlist": lambda: summary_builder.build_watchlist_summary(
-            kwargs.get("name", ""), kwargs.get("symbols")),
+            kwargs.get("symbol", ""), kwargs.get("note_type", ""), kwargs.get("content", "")
+        ),
+        "watchlist": lambda: summary_builder.build_watchlist_summary(kwargs.get("name", ""), kwargs.get("symbols")),
     }
     builder = builders.get(category)
     if builder is None:
@@ -119,6 +125,7 @@ def _build_embedding(category: str, **kwargs) -> tuple[str, list[float] | None]:
 # ---------------------------------------------------------------------------
 # Save functions
 # ---------------------------------------------------------------------------
+
 
 def save_screening(
     preset: str,
@@ -156,6 +163,7 @@ def save_screening(
     # Neo4j dual-write (KIK-399/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_screen, merge_stock
+
         symbols = [r.get("symbol") for r in results if r.get("symbol")]
         for r in results:
             sym = r.get("symbol")
@@ -163,11 +171,13 @@ def save_screening(
                 merge_stock(symbol=sym, name=r.get("name", ""), sector=r.get("sector", ""))
         # KIK-420: Generate semantic summary + embedding
         sem_summary, emb = _build_embedding(
-            "screen", date=today, preset=preset, region=region,
+            "screen",
+            date=today,
+            preset=preset,
+            region=region,
             top_symbols=symbols[:5],
         )
-        merge_screen(today, preset, region, len(results), symbols,
-                     semantic_summary=sem_summary, embedding=emb)
+        merge_screen(today, preset, region, len(results), symbols, semantic_summary=sem_summary, embedding=emb)
     except Exception as exc:
         logger.debug("Neo4j sync skipped: %s", exc)
 
@@ -218,18 +228,30 @@ def save_report(
 
     # Neo4j dual-write (KIK-399/413/420) -- graceful degradation
     try:
-        from src.data.graph_store import merge_report_full, merge_stock, get_mode
+        from src.data.graph_store import merge_report_full, merge_stock
+
         merge_stock(symbol=symbol, name=data.get("name", ""), sector=data.get("sector", ""))
         sem_summary, emb = _build_embedding(
-            "report", symbol=symbol, name=data.get("name", ""),
-            score=score, verdict=verdict, sector=data.get("sector", ""),
+            "report",
+            symbol=symbol,
+            name=data.get("name", ""),
+            score=score,
+            verdict=verdict,
+            sector=data.get("sector", ""),
         )
         merge_report_full(
-            report_date=today, symbol=symbol, score=score, verdict=verdict,
-            price=data.get("price", 0), per=data.get("per", 0),
-            pbr=data.get("pbr", 0), dividend_yield=data.get("dividend_yield", 0),
-            roe=data.get("roe", 0), market_cap=data.get("market_cap", 0),
-            semantic_summary=sem_summary, embedding=emb,
+            report_date=today,
+            symbol=symbol,
+            score=score,
+            verdict=verdict,
+            price=data.get("price", 0),
+            per=data.get("per", 0),
+            pbr=data.get("pbr", 0),
+            dividend_yield=data.get("dividend_yield", 0),
+            roe=data.get("roe", 0),
+            market_cap=data.get("market_cap", 0),
+            semantic_summary=sem_summary,
+            embedding=emb,
         )
     except Exception as exc:
         logger.debug("Neo4j sync skipped: %s", exc)
@@ -292,16 +314,27 @@ def save_trade(
 
     # Neo4j dual-write (KIK-399/420) -- graceful degradation
     try:
-        from src.data.graph_store import merge_trade, merge_stock
+        from src.data.graph_store import merge_stock, merge_trade
+
         merge_stock(symbol=symbol)
         sem_summary, emb = _build_embedding(
-            "trade", date=date_str, trade_type=trade_type,
-            symbol=symbol, shares=shares, memo=memo,
+            "trade",
+            date=date_str,
+            trade_type=trade_type,
+            symbol=symbol,
+            shares=shares,
+            memo=memo,
         )
         merge_trade(
-            trade_date=date_str, trade_type=trade_type, symbol=symbol,
-            shares=shares, price=price, currency=currency, memo=memo,
-            semantic_summary=sem_summary, embedding=emb,
+            trade_date=date_str,
+            trade_type=trade_type,
+            symbol=symbol,
+            shares=shares,
+            price=price,
+            currency=currency,
+            memo=memo,
+            semantic_summary=sem_summary,
+            embedding=emb,
         )
     except Exception as exc:
         logger.debug("Neo4j sync skipped: %s", exc)
@@ -323,13 +356,15 @@ def save_health(
 
     positions_out = []
     for pos in health_data.get("positions", []):
-        positions_out.append({
-            "symbol": pos.get("symbol"),
-            "pnl_pct": pos.get("pnl_pct"),
-            "trend": pos.get("trend_health", {}).get("trend", "不明"),
-            "quality_label": pos.get("change_quality", {}).get("quality_label", "-"),
-            "alert_level": pos.get("alert", {}).get("level", "none"),
-        })
+        positions_out.append(
+            {
+                "symbol": pos.get("symbol"),
+                "pnl_pct": pos.get("pnl_pct"),
+                "trend": pos.get("trend_health", {}).get("trend", "不明"),
+                "quality_label": pos.get("change_quality", {}).get("quality_label", "-"),
+                "alert_level": pos.get("alert", {}).get("level", "none"),
+            }
+        )
 
     summary_raw = health_data.get("summary", {})
     summary = {
@@ -357,17 +392,18 @@ def save_health(
     # Neo4j dual-write (KIK-399/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_health
+
         symbols = [p.get("symbol") for p in health_data.get("positions", []) if p.get("symbol")]
         sem_summary, emb = _build_embedding(
-            "health", date=today, summary=summary,
+            "health",
+            date=today,
+            summary=summary,
         )
-        merge_health(today, summary, symbols,
-                     semantic_summary=sem_summary, embedding=emb)
+        merge_health(today, summary, symbols, semantic_summary=sem_summary, embedding=emb)
     except Exception as exc:
         logger.debug("Neo4j sync skipped: %s", exc)
 
     return str(path.resolve())
-
 
 
 def save_research(
@@ -416,24 +452,34 @@ def save_research(
 
     # Neo4j dual-write (KIK-399/413/416/420) -- graceful degradation
     try:
-        from src.data.graph_store import merge_research_full, merge_stock, link_research_supersedes
+        from src.data.graph_store import link_research_supersedes, merge_research_full, merge_stock
+
         if research_type in ("stock", "business"):
             merge_stock(symbol=target, name=result.get("name", ""))
         # Why: summary_builder に一本化し、history_store 内の重複実装を排除
         from src.data import summary_builder as _sb
+
         summary = result.get("summary", "") or _sb.build_research_summary(
-            research_type, target, result,
+            research_type,
+            target,
+            result,
         )
         sem_summary, emb = _build_embedding(
-            "research", research_type=research_type, target=target, result=result,
+            "research",
+            research_type=research_type,
+            target=target,
+            result=result,
         )
         merge_research_full(
-            research_date=today, research_type=research_type,
-            target=target, summary=summary,
+            research_date=today,
+            research_type=research_type,
+            target=target,
+            summary=summary,
             grok_research=result.get("grok_research"),
             x_sentiment=result.get("x_sentiment"),
             news=result.get("news"),
-            semantic_summary=sem_summary, embedding=emb,
+            semantic_summary=sem_summary,
+            embedding=emb,
         )
         link_research_supersedes(research_type, target)
     except Exception as exc:
@@ -481,15 +527,19 @@ def save_market_context(
     # Neo4j dual-write (KIK-399/413/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_market_context_full
+
         sem_summary, emb = _build_embedding(
-            "market_context", date=today,
+            "market_context",
+            date=today,
             indices=context.get("indices", []),
             grok_research=context.get("grok_research"),
         )
         merge_market_context_full(
-            context_date=today, indices=context.get("indices", []),
+            context_date=today,
+            indices=context.get("indices", []),
             grok_research=context.get("grok_research"),
-            semantic_summary=sem_summary, embedding=emb,
+            semantic_summary=sem_summary,
+            embedding=emb,
         )
     except Exception as exc:
         logger.debug("Neo4j sync skipped: %s", exc)
@@ -500,6 +550,7 @@ def save_market_context(
 # ---------------------------------------------------------------------------
 # Load functions
 # ---------------------------------------------------------------------------
+
 
 def load_history(
     category: str,
@@ -565,7 +616,4 @@ def list_history_files(
     if not d.exists():
         return []
 
-    return [
-        str(fp.resolve())
-        for fp in sorted(d.glob("*.json"), reverse=True)
-    ]
+    return [str(fp.resolve()) for fp in sorted(d.glob("*.json"), reverse=True)]

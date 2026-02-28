@@ -15,71 +15,90 @@ import sys
 import time
 from pathlib import Path
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
 # --- コンポーネントを import ---
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 
-from components.data_loader import (
-    get_current_snapshot,
-    build_portfolio_history,
-    get_sector_breakdown,
-    get_monthly_summary,
-    get_trade_activity,
-    build_projection,
-    compute_risk_metrics,
-    compute_daily_change,
-    compute_benchmark_excess,
-    compute_top_worst_performers,
-    compute_drawdown_series,
-    compute_rolling_sharpe,
-    compute_correlation_matrix,
-    compute_weight_drift,
-    get_benchmark_series,
-    run_dashboard_health_check,
-    fetch_economic_news,
-    clear_price_cache,
+from components.charts import (
+    build_correlation_chart,
+    build_currency_chart,
+    build_drawdown_chart,
+    build_individual_chart,
+    build_invested_chart,
+    build_monthly_chart,
+    build_projection_chart,
+    build_rolling_sharpe_chart,
+    build_sector_chart,
+    build_total_chart,
+    build_trade_flow_chart,
+    build_treemap_chart,
 )
-from components.settings_store import load_settings, save_settings, DEFAULTS
-from components.trade_form import render_trade_form
-from components.llm_analyzer import (
-    AVAILABLE_MODELS as LLM_MODELS,
-    CACHE_TTL_OPTIONS as LLM_CACHE_OPTIONS,
-    is_available as llm_is_available,
-    get_cache_info as llm_get_cache_info,
-    clear_cache as llm_clear_cache,
-    get_summary_cache_info as llm_get_summary_cache_info,
-    clear_summary_cache as llm_clear_summary_cache,
-    get_health_summary_cache_info as llm_get_health_summary_cache_info,
-    clear_health_summary_cache as llm_clear_health_summary_cache,
-    run_unified_analysis,
-    apply_news_analysis,
-    get_unified_cache_info as llm_get_unified_cache_info,
-    clear_unified_cache as llm_clear_unified_cache,
+from components.copilot_client import (
+    AVAILABLE_MODELS as COPILOT_MODELS,
+)
+from components.copilot_client import (
+    call as copilot_call,
+)
+from components.copilot_client import (
+    clear_execution_logs as copilot_clear_logs,
 )
 from components.copilot_client import (
     get_execution_logs as copilot_get_logs,
-    clear_execution_logs as copilot_clear_logs,
-    call as copilot_call,
-    AVAILABLE_MODELS as COPILOT_MODELS,
 )
-from components.charts import (
-    build_total_chart,
-    build_invested_chart,
-    build_projection_chart,
-    build_sector_chart,
-    build_currency_chart,
-    build_individual_chart,
-    build_monthly_chart,
-    build_trade_flow_chart,
-    build_drawdown_chart,
-    build_rolling_sharpe_chart,
-    build_treemap_chart,
-    build_correlation_chart,
+from components.data_loader import (
+    build_portfolio_history,
+    build_projection,
+    clear_price_cache,
+    compute_benchmark_excess,
+    compute_correlation_matrix,
+    compute_daily_change,
+    compute_drawdown_series,
+    compute_risk_metrics,
+    compute_rolling_sharpe,
+    compute_top_worst_performers,
+    compute_weight_drift,
+    fetch_economic_news,
+    get_benchmark_series,
+    get_current_snapshot,
+    get_monthly_summary,
+    get_sector_breakdown,
+    get_trade_activity,
+    run_dashboard_health_check,
 )
+from components.llm_analyzer import (
+    AVAILABLE_MODELS as LLM_MODELS,
+)
+from components.llm_analyzer import (
+    CACHE_TTL_OPTIONS as LLM_CACHE_OPTIONS,
+)
+from components.llm_analyzer import (
+    apply_news_analysis,
+    run_unified_analysis,
+)
+from components.llm_analyzer import (
+    clear_cache as llm_clear_cache,
+)
+from components.llm_analyzer import (
+    clear_health_summary_cache as llm_clear_health_summary_cache,
+)
+from components.llm_analyzer import (
+    clear_summary_cache as llm_clear_summary_cache,
+)
+from components.llm_analyzer import (
+    clear_unified_cache as llm_clear_unified_cache,
+)
+from components.llm_analyzer import (
+    get_cache_info as llm_get_cache_info,
+)
+from components.llm_analyzer import (
+    is_available as llm_is_available,
+)
+from components.settings_store import load_settings, save_settings
+from components.trade_form import render_trade_form
 
 # =====================================================================
 # ページ設定
@@ -98,6 +117,7 @@ _CSS_PATH = _SCRIPT_DIR / "static" / "dashboard.css"
 _custom_css = _CSS_PATH.read_text(encoding="utf-8") if _CSS_PATH.exists() else ""
 st.markdown(f"<style>{_custom_css}</style>", unsafe_allow_html=True)
 
+
 # =====================================================================
 # ポートフォリオ変更検知 — CSV / 取引履歴の更新を自動反映
 # =====================================================================
@@ -107,6 +127,7 @@ def _get_portfolio_fingerprint() -> str:
     ファイルが更新されると値が変わるので、キャッシュ無効化のトリガーに使う。
     """
     from src.core.portfolio.portfolio_manager import DEFAULT_CSV_PATH as _CSV_PATH
+
     parts: list[str] = []
     # portfolio.csv の mtime
     csv_p = Path(_CSV_PATH)
@@ -212,7 +233,7 @@ with _tab_toc:
         '<a class="toc-link" href="#monthly">📅 月次サマリー</a>'
         '<a class="toc-link" href="#trade-activity">🔄 売買アクティビティ</a>'
         '<a class="toc-link" href="#copilot-chat">💬 Copilot に相談</a>'
-        '</div>',
+        "</div>",
         unsafe_allow_html=True,
     )
 
@@ -267,7 +288,9 @@ with _tab_settings:
         "TOPIX (^TPX)": "1306.T",
     }
     _bench_labels = list(_BENCHMARK_OPTIONS.keys())
-    _bench_saved_idx = _bench_labels.index(_saved["benchmark_label"]) if _saved["benchmark_label"] in _bench_labels else 0
+    _bench_saved_idx = (
+        _bench_labels.index(_saved["benchmark_label"]) if _saved["benchmark_label"] in _bench_labels else 0
+    )
 
     benchmark_label = st.selectbox(
         "📏 ベンチマーク比較",
@@ -292,14 +315,17 @@ with _tab_settings:
         value=_saved["show_projection"],
     )
 
-    target_amount = st.number_input(
-        "🎯 目標資産額（万円）",
-        min_value=0,
-        max_value=100000,
-        value=_saved["target_amount_man"],
-        step=500,
-        help="総資産推移グラフに水平ラインとして表示",
-    ) * 10000  # 万円→円
+    target_amount = (
+        st.number_input(
+            "🎯 目標資産額（万円）",
+            min_value=0,
+            max_value=100000,
+            value=_saved["target_amount_man"],
+            step=500,
+            help="総資産推移グラフに水平ラインとして表示",
+        )
+        * 10000
+    )  # 万円→円
 
     projection_years = st.slider(
         "📅 推定期間（年）",
@@ -323,7 +349,9 @@ with _tab_settings:
         ("1時間", 3600),
     ]
     _refresh_labels = [label for label, _ in _REFRESH_OPTIONS]
-    _refresh_saved_idx = _refresh_labels.index(_saved["auto_refresh_label"]) if _saved["auto_refresh_label"] in _refresh_labels else 2
+    _refresh_saved_idx = (
+        _refresh_labels.index(_saved["auto_refresh_label"]) if _saved["auto_refresh_label"] in _refresh_labels else 2
+    )
 
     auto_refresh_label = st.selectbox(
         "⏱ 自動更新間隔",
@@ -378,21 +406,14 @@ with _tab_settings:
     llm_auto_analyze = st.checkbox(
         "ページ更新時に自動分析",
         value=_saved.get("llm_auto_analyze", False),
-        help=(
-            "OFF にすると LLM 分析はボタンクリック時のみ実行されます。"
-            "Premium Request の過剰消費を防ぎます。"
-        ),
+        help=("OFF にすると LLM 分析はボタンクリック時のみ実行されます。Premium Request の過剰消費を防ぎます。"),
         disabled=not llm_enabled,
     )
 
     _model_ids = [m[0] for m in LLM_MODELS]
     _model_labels = [m[1] for m in LLM_MODELS]
     _saved_model = _saved.get("llm_model", "gpt-4.1")
-    _model_saved_idx = (
-        _model_ids.index(_saved_model)
-        if _saved_model in _model_ids
-        else 1
-    )
+    _model_saved_idx = _model_ids.index(_saved_model) if _saved_model in _model_ids else 1
 
     llm_model_label = st.selectbox(
         "🧠 分析モデル",
@@ -407,20 +428,13 @@ with _tab_settings:
     _ttl_labels = [t[0] for t in LLM_CACHE_OPTIONS]
     _ttl_values = [t[1] for t in LLM_CACHE_OPTIONS]
     _saved_ttl_label = _saved.get("llm_cache_ttl_label", "1時間")
-    _ttl_saved_idx = (
-        _ttl_labels.index(_saved_ttl_label)
-        if _saved_ttl_label in _ttl_labels
-        else 0
-    )
+    _ttl_saved_idx = _ttl_labels.index(_saved_ttl_label) if _saved_ttl_label in _ttl_labels else 0
 
     llm_cache_ttl_label = st.selectbox(
         "⏳ 分析キャッシュ保持",
         options=_ttl_labels,
         index=_ttl_saved_idx,
-        help=(
-            "同じニュースに対して LLM 再分析をスキップする期間。"
-            "Premium Request の消費を抑えます。"
-        ),
+        help=("同じニュースに対して LLM 再分析をスキップする期間。Premium Request の消費を抑えます。"),
         disabled=not llm_enabled,
     )
     llm_cache_ttl_sec = _ttl_values[_ttl_labels.index(llm_cache_ttl_label)]
@@ -431,11 +445,7 @@ with _tab_settings:
     _chat_model_ids = [m[0] for m in COPILOT_MODELS]
     _chat_model_labels = [m[1] for m in COPILOT_MODELS]
     _saved_chat_model = _saved.get("chat_model", "claude-sonnet-4")
-    _chat_model_saved_idx = (
-        _chat_model_ids.index(_saved_chat_model)
-        if _saved_chat_model in _chat_model_ids
-        else 0
-    )
+    _chat_model_saved_idx = _chat_model_ids.index(_saved_chat_model) if _saved_chat_model in _chat_model_ids else 0
     chat_model_label = st.selectbox(
         "🧠 チャットモデル",
         options=_chat_model_labels,
@@ -461,8 +471,10 @@ with _tab_settings:
                 llm_clear_unified_cache()
                 # session_state のLLM結果もクリア
                 for _ss_key in [
-                    "_llm_news_results", "_llm_news_summary",
-                    "_llm_hc_summary", "_llm_analyzed_at",
+                    "_llm_news_results",
+                    "_llm_news_summary",
+                    "_llm_hc_summary",
+                    "_llm_analyzed_at",
                 ]:
                     st.session_state.pop(_ss_key, None)
                 st.rerun()
@@ -475,9 +487,8 @@ with _tab_settings:
         # session_state に前回の分析結果があれば表示
         if "_llm_analyzed_at" in st.session_state:
             import datetime as _dt_ss
-            _ss_at = _dt_ss.datetime.fromtimestamp(
-                st.session_state["_llm_analyzed_at"]
-            ).strftime("%H:%M:%S")
+
+            _ss_at = _dt_ss.datetime.fromtimestamp(st.session_state["_llm_analyzed_at"]).strftime("%H:%M:%S")
             st.caption(f"📌 セッション内分析: {_ss_at}")
 
     # --- 設定の自動保存 ---
@@ -588,10 +599,7 @@ if _refresh_count > st.session_state.get("_prev_refresh_count", 0):
     st.session_state["last_refresh"] = time.strftime("%Y-%m-%d %H:%M:%S")
     st.session_state["_prev_refresh_count"] = _refresh_count
 
-st.sidebar.caption(
-    f"最終更新: {st.session_state['last_refresh']}\n\n"
-    f"Data Source: yfinance + portfolio.csv"
-)
+st.sidebar.caption(f"最終更新: {st.session_state['last_refresh']}\n\nData Source: yfinance + portfolio.csv")
 
 
 # =====================================================================
@@ -623,7 +631,9 @@ if _fx_display:
 st.markdown('<div id="summary"></div>', unsafe_allow_html=True)
 st.markdown("### 📈 サマリー")
 _summary_as_of = snapshot.get("as_of", "")[:16].replace("T", " ") or "—"
-st.caption(f"ポートフォリオ全体の現在価値・損益・リスク指標を一目で把握するセクションです。｜ 🕐 データ取得: {_summary_as_of}")
+st.caption(
+    f"ポートフォリオ全体の現在価値・損益・リスク指標を一目で把握するセクションです。｜ 🕐 データ取得: {_summary_as_of}"
+)
 
 positions = snapshot["positions"]
 total_value = snapshot["total_value_jpy"]
@@ -640,25 +650,22 @@ _pnl_ma = snapshot.get("pnl_moving_avg", {})
 unrealized_pnl = _pnl_ma.get("unrealized_total_jpy", 0)
 realized_pnl = _pnl_ma.get("realized_total_jpy", 0)
 _cost_basis_total = sum(_pnl_ma.get("cost_basis", {}).values())
-unrealized_pnl_pct = (
-    (unrealized_pnl / _cost_basis_total * 100) if _cost_basis_total else 0
-)
+unrealized_pnl_pct = (unrealized_pnl / _cost_basis_total * 100) if _cost_basis_total else 0
+
 
 # --- 大項目カード（トータル資産 / 評価損益 / 保有銘柄数） ---
 def _kpi_main(label: str, value: str, sub: str = "", color: str = "") -> str:
     """大項目 KPI: テーマ追従 + 大きめフォント."""
     color_style = f"color:{color};" if color else ""
-    sub_html = (
-        f'<div style="font-size:0.92rem; {color_style} margin-top:4px; opacity:0.85;">{sub}</div>'
-        if sub else ""
-    )
+    sub_html = f'<div style="font-size:0.92rem; {color_style} margin-top:4px; opacity:0.85;">{sub}</div>' if sub else ""
     return (
         f'<div class="kpi-card kpi-main">'
         f'<div class="kpi-label">{label}</div>'
         f'<div class="kpi-value" style="{color_style}">{value}</div>'
-        f'{sub_html}'
-        f'</div>'
+        f"{sub_html}"
+        f"</div>"
     )
+
 
 # --- 小項目カード（損益サブ指標） ---
 def _kpi_sub(label: str, value: str, color: str = "") -> str:
@@ -668,8 +675,9 @@ def _kpi_sub(label: str, value: str, color: str = "") -> str:
         f'<div class="kpi-card kpi-sub">'
         f'<div class="kpi-label">{label}</div>'
         f'<div class="kpi-value-sub" style="{color_style}">{value}</div>'
-        f'</div>'
+        f"</div>"
     )
+
 
 # --- リスク指標カード ---
 def _risk_card(label: str, value: str, color: str = "") -> str:
@@ -680,8 +688,9 @@ def _risk_card(label: str, value: str, color: str = "") -> str:
         f'<div class="kpi-label" style="white-space:nowrap;'
         f' overflow:hidden; text-overflow:ellipsis;">{label}</div>'
         f'<div class="kpi-value-risk" style="{color_style}">{value}</div>'
-        f'</div>'
+        f"</div>"
     )
+
 
 _unr_color = "#4ade80" if unrealized_pnl >= 0 else "#f87171"
 _unr_sign = "+" if unrealized_pnl >= 0 else ""
@@ -697,23 +706,27 @@ _dc_sub = f'<span style="color:{_dc_color};">前日比 {_dc_text}</span>' if _dc
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.markdown(_kpi_main("トータル資産（円換算）", f"¥{total_value:,.0f}",
-                          sub=_dc_sub),
-                unsafe_allow_html=True)
+    st.markdown(_kpi_main("トータル資産（円換算）", f"¥{total_value:,.0f}", sub=_dc_sub), unsafe_allow_html=True)
 with col2:
-    st.markdown(_kpi_main(
-        "評価損益（含み）",
-        f"{_unr_sign}¥{unrealized_pnl:,.0f}",
-        sub=f"{unrealized_pnl_pct:+.2f}%",
-        color=_unr_color,
-    ), unsafe_allow_html=True)
+    st.markdown(
+        _kpi_main(
+            "評価損益（含み）",
+            f"{_unr_sign}¥{unrealized_pnl:,.0f}",
+            sub=f"{unrealized_pnl_pct:+.2f}%",
+            color=_unr_color,
+        ),
+        unsafe_allow_html=True,
+    )
 with col3:
-    st.markdown(_kpi_main(
-        "保有銘柄数",
-        f"{num_holdings}",
-        sub=f"更新: {snapshot['as_of'][:10]}",
-        color="#60a5fa",
-    ), unsafe_allow_html=True)
+    st.markdown(
+        _kpi_main(
+            "保有銘柄数",
+            f"{num_holdings}",
+            sub=f"更新: {snapshot['as_of'][:10]}",
+            color="#60a5fa",
+        ),
+        unsafe_allow_html=True,
+    )
 
 # --- 小項目: 損益 ---
 total_pnl = unrealized_pnl + realized_pnl
@@ -726,17 +739,23 @@ st.markdown('<div class="kpi-spacer"></div>', unsafe_allow_html=True)
 
 sub_col1, sub_col2 = st.columns(2)
 with sub_col1:
-    st.markdown(_kpi_sub(
-        "トータル損益（実現＋含み）",
-        f"{total_pnl_sign}¥{total_pnl:,.0f}",
-        color=total_pnl_color,
-    ), unsafe_allow_html=True)
+    st.markdown(
+        _kpi_sub(
+            "トータル損益（実現＋含み）",
+            f"{total_pnl_sign}¥{total_pnl:,.0f}",
+            color=total_pnl_color,
+        ),
+        unsafe_allow_html=True,
+    )
 with sub_col2:
-    st.markdown(_kpi_sub(
-        "実現損益（確定済）",
-        f"{realized_sign}¥{realized_pnl:,.0f}",
-        color=realized_color,
-    ), unsafe_allow_html=True)
+    st.markdown(
+        _kpi_sub(
+            "実現損益（確定済）",
+            f"{realized_sign}¥{realized_pnl:,.0f}",
+            color=realized_color,
+        ),
+        unsafe_allow_html=True,
+    )
 
 # --- リスク指標 ---
 if not history_df.empty:
@@ -744,30 +763,31 @@ if not history_df.empty:
 
     st.markdown('<div class="kpi-spacer"></div>', unsafe_allow_html=True)
 
-    _sharpe_color = "#4ade80" if risk["sharpe_ratio"] >= 1.0 else (
-        "#fbbf24" if risk["sharpe_ratio"] >= 0.5 else "#f87171"
+    _sharpe_color = (
+        "#4ade80" if risk["sharpe_ratio"] >= 1.0 else ("#fbbf24" if risk["sharpe_ratio"] >= 0.5 else "#f87171")
     )
-    _mdd_color = "#4ade80" if risk["max_drawdown_pct"] > -10 else (
-        "#fbbf24" if risk["max_drawdown_pct"] > -20 else "#f87171"
+    _mdd_color = (
+        "#4ade80" if risk["max_drawdown_pct"] > -10 else ("#fbbf24" if risk["max_drawdown_pct"] > -20 else "#f87171")
     )
 
     rcol1, rcol2, rcol3, rcol4, rcol5 = st.columns(5)
     with rcol1:
-        st.markdown(_risk_card("年率リターン", f"{risk['annual_return_pct']:+.1f}%",
-                               "#4ade80" if risk["annual_return_pct"] > 0 else "#f87171"),
-                    unsafe_allow_html=True)
+        st.markdown(
+            _risk_card(
+                "年率リターン",
+                f"{risk['annual_return_pct']:+.1f}%",
+                "#4ade80" if risk["annual_return_pct"] > 0 else "#f87171",
+            ),
+            unsafe_allow_html=True,
+        )
     with rcol2:
-        st.markdown(_risk_card("ボラティリティ", f"{risk['annual_volatility_pct']:.1f}%"),
-                    unsafe_allow_html=True)
+        st.markdown(_risk_card("ボラティリティ", f"{risk['annual_volatility_pct']:.1f}%"), unsafe_allow_html=True)
     with rcol3:
-        st.markdown(_risk_card("Sharpe", f"{risk['sharpe_ratio']:.2f}", _sharpe_color),
-                    unsafe_allow_html=True)
+        st.markdown(_risk_card("Sharpe", f"{risk['sharpe_ratio']:.2f}", _sharpe_color), unsafe_allow_html=True)
     with rcol4:
-        st.markdown(_risk_card("最大DD", f"{risk['max_drawdown_pct']:.1f}%", _mdd_color),
-                    unsafe_allow_html=True)
+        st.markdown(_risk_card("最大DD", f"{risk['max_drawdown_pct']:.1f}%", _mdd_color), unsafe_allow_html=True)
     with rcol5:
-        st.markdown(_risk_card("Calmar", f"{risk['calmar_ratio']:.2f}"),
-                    unsafe_allow_html=True)
+        st.markdown(_risk_card("Calmar", f"{risk['calmar_ratio']:.2f}"), unsafe_allow_html=True)
 
 # --- ベンチマーク超過リターン ---
 if benchmark_symbol and not history_df.empty:
@@ -779,23 +799,32 @@ if benchmark_symbol and not history_df.empty:
         _ex_sign = "+" if _excess["excess_return_pct"] >= 0 else ""
         ecol1, ecol2, ecol3 = st.columns(3)
         with ecol1:
-            st.markdown(_risk_card(
-                "PFリターン",
-                f"{_excess['portfolio_return_pct']:+.1f}%",
-                "#4ade80" if _excess["portfolio_return_pct"] > 0 else "#f87171",
-            ), unsafe_allow_html=True)
+            st.markdown(
+                _risk_card(
+                    "PFリターン",
+                    f"{_excess['portfolio_return_pct']:+.1f}%",
+                    "#4ade80" if _excess["portfolio_return_pct"] > 0 else "#f87171",
+                ),
+                unsafe_allow_html=True,
+            )
         with ecol2:
-            st.markdown(_risk_card(
-                f"{benchmark_label}リターン",
-                f"{_excess['benchmark_return_pct']:+.1f}%",
-                "#60a5fa",
-            ), unsafe_allow_html=True)
+            st.markdown(
+                _risk_card(
+                    f"{benchmark_label}リターン",
+                    f"{_excess['benchmark_return_pct']:+.1f}%",
+                    "#60a5fa",
+                ),
+                unsafe_allow_html=True,
+            )
         with ecol3:
-            st.markdown(_risk_card(
-                "超過リターン",
-                f"{_ex_sign}{_excess['excess_return_pct']:.1f}%",
-                _ex_color,
-            ), unsafe_allow_html=True)
+            st.markdown(
+                _risk_card(
+                    "超過リターン",
+                    f"{_ex_sign}{_excess['excess_return_pct']:.1f}%",
+                    _ex_color,
+                ),
+                unsafe_allow_html=True,
+            )
 
 # --- Top / Worst パフォーマー ---
 if not history_df.empty:
@@ -813,11 +842,11 @@ if not history_df.empty:
                 _top_html += (
                     f'<div style="display:flex; justify-content:space-between;'
                     f' padding:3px 0; font-size:0.9rem;">'
-                    f'<span>{p["symbol"]}</span>'
+                    f"<span>{p['symbol']}</span>"
                     f'<span style="color:{_c}; font-weight:600;">'
-                    f'{p["change_pct"]:+.2f}%</span></div>'
+                    f"{p['change_pct']:+.2f}%</span></div>"
                 )
-            _top_html += '</div>'
+            _top_html += "</div>"
             st.markdown(_top_html, unsafe_allow_html=True)
         with pcol2:
             _worst_html = '<div class="kpi-card kpi-sub" style="text-align:left;">'
@@ -827,11 +856,11 @@ if not history_df.empty:
                 _worst_html += (
                     f'<div style="display:flex; justify-content:space-between;'
                     f' padding:3px 0; font-size:0.9rem;">'
-                    f'<span>{p["symbol"]}</span>'
+                    f"<span>{p['symbol']}</span>"
                     f'<span style="color:{_c}; font-weight:600;">'
-                    f'{p["change_pct"]:+.2f}%</span></div>'
+                    f"{p['change_pct']:+.2f}%</span></div>"
                 )
-            _worst_html += '</div>'
+            _worst_html += "</div>"
             st.markdown(_worst_html, unsafe_allow_html=True)
 
 st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -842,7 +871,9 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 st.markdown('<div id="health-check"></div>', unsafe_allow_html=True)
 st.markdown("### 🏥 ヘルスチェック")
 _hc_as_of = st.session_state.get("last_refresh", "—")[:16]
-st.caption(f"各銘柄のトレンド・テクニカル指標をチェックし、売りタイミングや注意が必要な銘柄を自動検出します。｜ 🕐 データ取得: {_hc_as_of}")
+st.caption(
+    f"各銘柄のトレンド・テクニカル指標をチェックし、売りタイミングや注意が必要な銘柄を自動検出します。｜ 🕐 データ取得: {_hc_as_of}"
+)
 
 try:
     health_data = load_health_check()
@@ -885,13 +916,14 @@ if health_data is not None:
     if llm_enabled and llm_auto_analyze:
         # 経済ニュースを取得（キーワードベースのみ、LLM分析は統合で実行）
         try:
-            _hc_pos_key = ",".join(
-                sorted(p.get("symbol", "") for p in positions if p.get("sector") != "Cash")
-            )
+            _hc_pos_key = ",".join(sorted(p.get("symbol", "") for p in positions if p.get("sector") != "Cash"))
             _hc_fx = snapshot.get("fx_rates", {})
             _hc_news = load_economic_news(
-                _hc_pos_key, positions, _hc_fx,
-                llm_enabled=False, llm_model=llm_model,
+                _hc_pos_key,
+                positions,
+                _hc_fx,
+                llm_enabled=False,
+                llm_model=llm_model,
                 llm_cache_ttl=llm_cache_ttl_sec,
             )
         except Exception:
@@ -899,14 +931,16 @@ if health_data is not None:
 
         # 統合分析: ニュース分類 + 要約 + ヘルスチェック を 1 セッションで実行
         _unified_result = run_unified_analysis(
-            _hc_news, positions, health_data,
-            model=llm_model, timeout=180, cache_ttl=llm_cache_ttl_sec,
+            _hc_news,
+            positions,
+            health_data,
+            model=llm_model,
+            timeout=180,
+            cache_ttl=llm_cache_ttl_sec,
         )
         if _unified_result:
             # ニュース分析結果を適用して session_state へ保存
-            _analyzed_news = apply_news_analysis(
-                _hc_news, _unified_result.get("news_analysis", [])
-            )
+            _analyzed_news = apply_news_analysis(_hc_news, _unified_result.get("news_analysis", []))
             st.session_state["_llm_news_results"] = _analyzed_news
             st.session_state["_llm_analyzed_at"] = time.time()
 
@@ -945,10 +979,7 @@ if health_data is not None:
             if _llm_sa:
                 _llm_text = _llm_sa.get("assessment", "")
                 if _llm_text:
-                    detail_html += (
-                        f'<div class="sell-alert-ai">'
-                        f'🤖 <strong>AI分析</strong>: {_llm_text}</div>'
-                    )
+                    detail_html += f'<div class="sell-alert-ai">🤖 <strong>AI分析</strong>: {_llm_text}</div>'
 
             pnl = alert.get("pnl_pct", 0)
             pnl_color = "#4ade80" if pnl >= 0 else "#f87171"
@@ -957,15 +988,15 @@ if health_data is not None:
             st.markdown(
                 f'<div class="sell-alert sell-alert-{urgency}">'
                 f'<div class="sell-alert-header">'
-                f'{_urgency_emoji.get(urgency, "")} '
-                f'[{_urgency_label.get(urgency, "")}] '
-                f'{alert["name"]} ({alert["symbol"]}) '
-                f'— {alert["action"]} '
-                f'(含み損益: {pnl_text})'
-                f'</div>'
+                f"{_urgency_emoji.get(urgency, '')} "
+                f"[{_urgency_label.get(urgency, '')}] "
+                f"{alert['name']} ({alert['symbol']}) "
+                f"— {alert['action']} "
+                f"(含み損益: {pnl_text})"
+                f"</div>"
                 f'<div class="sell-alert-reason">{alert["reason"]}</div>'
-                f'{detail_html}'
-                f'</div>',
+                f"{detail_html}"
+                f"</div>",
                 unsafe_allow_html=True,
             )
     else:
@@ -973,55 +1004,49 @@ if health_data is not None:
 
     # --- LLM ヘルスチェックサマリー表示 ---
     if _hc_llm_summary:
-            st.markdown('<div class="kpi-spacer"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="kpi-spacer"></div>', unsafe_allow_html=True)
 
-            _hcs_html = '<div class="health-summary-card">'
-            _hcs_html += '<div class="health-summary-header">🤖 ヘルスチェックサマリー</div>'
+        _hcs_html = '<div class="health-summary-card">'
+        _hcs_html += '<div class="health-summary-header">🤖 ヘルスチェックサマリー</div>'
 
-            _hcs_overview = _hc_llm_summary.get("overview", "")
-            if _hcs_overview:
-                _hcs_html += f'<div class="health-summary-overview">{_hcs_overview}</div>'
+        _hcs_overview = _hc_llm_summary.get("overview", "")
+        if _hcs_overview:
+            _hcs_html += f'<div class="health-summary-overview">{_hcs_overview}</div>'
 
-            _hcs_warning = _hc_llm_summary.get("risk_warning", "")
-            if _hcs_warning:
+        _hcs_warning = _hc_llm_summary.get("risk_warning", "")
+        if _hcs_warning:
+            _hcs_html += f'<div class="health-summary-warning">⚠️ <strong>リスク注意</strong>: {_hcs_warning}</div>'
+
+        _hcs_assessments = _hc_llm_summary.get("stock_assessments", [])
+        if _hcs_assessments:
+            # アラートレベルを持つ銘柄マップ
+            _hc_alert_map: dict[str, str] = {}
+            for _hcp in hc_positions:
+                _hc_alert_map[_hcp.get("symbol", "")] = _hcp.get("alert_level", "none")
+
+            _hcs_html += '<details class="health-summary-stocks-toggle">'
+            _hcs_html += f"<summary>📋 銘柄別コメント（{len(_hcs_assessments)}件）</summary>"
+
+            for _sa in _hcs_assessments:
+                _sa_sym = _sa.get("symbol", "")
+                _sa_name = _sa.get("name", _sa_sym)
+                _sa_assessment = _sa.get("assessment", "")
+                _sa_action = _sa.get("action", "")
+                _sa_alert = _hc_alert_map.get(_sa_sym, "none")
+                _sa_level_class = f" health-summary-stock-{_sa_alert}" if _sa_alert != "none" else ""
+                _action_badge = f'<span class="health-summary-action">{_sa_action}</span>' if _sa_action else ""
                 _hcs_html += (
-                    f'<div class="health-summary-warning">'
-                    f'⚠️ <strong>リスク注意</strong>: {_hcs_warning}</div>'
+                    f'<div class="health-summary-stock{_sa_level_class}">'
+                    f'<div class="health-summary-stock-name">'
+                    f"{_sa_name} ({_sa_sym}){_action_badge}</div>"
+                    f'<div class="health-summary-stock-text">{_sa_assessment}</div>'
+                    f"</div>"
                 )
 
-            _hcs_assessments = _hc_llm_summary.get("stock_assessments", [])
-            if _hcs_assessments:
-                # アラートレベルを持つ銘柄マップ
-                _hc_alert_map: dict[str, str] = {}
-                for _hcp in hc_positions:
-                    _hc_alert_map[_hcp.get("symbol", "")] = _hcp.get("alert_level", "none")
+            _hcs_html += "</details>"
 
-                _hcs_html += '<details class="health-summary-stocks-toggle">'
-                _hcs_html += f'<summary>📋 銘柄別コメント（{len(_hcs_assessments)}件）</summary>'
-
-                for _sa in _hcs_assessments:
-                    _sa_sym = _sa.get("symbol", "")
-                    _sa_name = _sa.get("name", _sa_sym)
-                    _sa_assessment = _sa.get("assessment", "")
-                    _sa_action = _sa.get("action", "")
-                    _sa_alert = _hc_alert_map.get(_sa_sym, "none")
-                    _sa_level_class = f" health-summary-stock-{_sa_alert}" if _sa_alert != "none" else ""
-                    _action_badge = (
-                        f'<span class="health-summary-action">{_sa_action}</span>'
-                        if _sa_action else ""
-                    )
-                    _hcs_html += (
-                        f'<div class="health-summary-stock{_sa_level_class}">'
-                        f'<div class="health-summary-stock-name">'
-                        f'{_sa_name} ({_sa_sym}){_action_badge}</div>'
-                        f'<div class="health-summary-stock-text">{_sa_assessment}</div>'
-                        f'</div>'
-                    )
-
-                _hcs_html += '</details>'
-
-            _hcs_html += '</div>'
-            st.markdown(_hcs_html, unsafe_allow_html=True)
+        _hcs_html += "</div>"
+        st.markdown(_hcs_html, unsafe_allow_html=True)
 
     # --- 銘柄別ヘルスチェック詳細 ---
     st.markdown('<div class="kpi-spacer"></div>', unsafe_allow_html=True)
@@ -1047,6 +1072,7 @@ if health_data is not None:
                 rsi_val = pos.get("rsi", float("nan"))
                 try:
                     import math
+
                     rsi_str = f"{rsi_val:.1f}" if not math.isnan(rsi_val) else "N/A"
                 except (TypeError, ValueError):
                     rsi_str = "N/A"
@@ -1056,18 +1082,20 @@ if health_data is not None:
 
                 reasons_str = " / ".join(pos.get("alert_reasons", [])) if pos.get("alert_reasons") else "-"
 
-                hc_table_data.append({
-                    "銘柄": f"{pos['name']}",
-                    "シンボル": pos["symbol"],
-                    "判定": _level_display.get(alert_level, alert_level),
-                    "トレンド": f"{_trend_emoji.get(pos['trend'], '')} {pos['trend']}",
-                    "RSI": rsi_str,
-                    "変化品質": pos.get("change_quality", ""),
-                    "長期適性": long_term,
-                    "還元安定度": stability_emoji,
-                    "含み損益(%)": pos.get("pnl_pct", 0),
-                    "理由": reasons_str,
-                })
+                hc_table_data.append(
+                    {
+                        "銘柄": f"{pos['name']}",
+                        "シンボル": pos["symbol"],
+                        "判定": _level_display.get(alert_level, alert_level),
+                        "トレンド": f"{_trend_emoji.get(pos['trend'], '')} {pos['trend']}",
+                        "RSI": rsi_str,
+                        "変化品質": pos.get("change_quality", ""),
+                        "長期適性": long_term,
+                        "還元安定度": stability_emoji,
+                        "含み損益(%)": pos.get("pnl_pct", 0),
+                        "理由": reasons_str,
+                    }
+                )
 
             hc_df = pd.DataFrame(hc_table_data)
 
@@ -1077,11 +1105,16 @@ if health_data is not None:
             hc_df = hc_df.sort_values("_sort").drop(columns=["_sort"])
 
             st.dataframe(
-                hc_df.style.format({
-                    "含み損益(%)": "{:+.1f}%",
-                }).map(
-                    lambda v: "color: #4ade80" if isinstance(v, (int, float)) and v > 0
-                    else ("color: #f87171" if isinstance(v, (int, float)) and v < 0 else ""),
+                hc_df.style.format(
+                    {
+                        "含み損益(%)": "{:+.1f}%",
+                    }
+                ).map(
+                    lambda v: (
+                        "color: #4ade80"
+                        if isinstance(v, (int, float)) and v > 0
+                        else ("color: #f87171" if isinstance(v, (int, float)) and v < 0 else "")
+                    ),
                     subset=["含み損益(%)"],
                 ),
                 width="stretch",
@@ -1124,9 +1157,9 @@ if health_data is not None:
                         trap_reasons = " / ".join(pos.get("value_trap_reasons", []))
                         trap_html = (
                             f'<div style="margin-top:6px; padding:6px 10px;'
-                            f' background:rgba(248,113,113,0.1); border-radius:6px;'
+                            f" background:rgba(248,113,113,0.1); border-radius:6px;"
                             f' font-size:0.82rem;">'
-                            f'🪤 バリュートラップ: {trap_reasons}</div>'
+                            f"🪤 バリュートラップ: {trap_reasons}</div>"
                         )
 
                     reasons_html = ""
@@ -1139,26 +1172,26 @@ if health_data is not None:
                         _cross_emoji = "🟡" if cross_signal == "golden_cross" else "💀"
                         _cross_label = "ゴールデンクロス" if cross_signal == "golden_cross" else "デッドクロス"
                         days = pos.get("days_since_cross", "?")
-                        cross_html = f' | {_cross_emoji} {_cross_label}（{days}日前）'
+                        cross_html = f" | {_cross_emoji} {_cross_label}（{days}日前）"
 
                     st.markdown(
                         f'<div class="health-card health-card-{alert_level}">'
                         f'<div style="display:flex; justify-content:space-between; align-items:center;">'
                         f'<span style="font-weight:700; font-size:1.0rem;">'
-                        f'{pos["alert_emoji"]} {pos["name"]} ({pos["symbol"]})</span>'
+                        f"{pos['alert_emoji']} {pos['name']} ({pos['symbol']})</span>"
                         f'<span style="font-size:0.85rem; opacity:0.8;">'
-                        f'{pos["alert_label"]}</span>'
-                        f'</div>'
+                        f"{pos['alert_label']}</span>"
+                        f"</div>"
                         f'<div style="font-size:0.85rem; margin-top:6px; opacity:0.8;">'
-                        f'トレンド: {pos["trend"]} | RSI: {pos.get("rsi", 0):.1f} '
-                        f'| SMA50: {pos.get("sma50", 0):,.1f} '
-                        f'| SMA200: {pos.get("sma200", 0):,.1f}'
-                        f'{cross_html}'
-                        f'</div>'
+                        f"トレンド: {pos['trend']} | RSI: {pos.get('rsi', 0):.1f} "
+                        f"| SMA50: {pos.get('sma50', 0):,.1f} "
+                        f"| SMA200: {pos.get('sma200', 0):,.1f}"
+                        f"{cross_html}"
+                        f"</div>"
                         f'<div style="font-size:0.85rem; margin-top:4px;">{ind_html}</div>'
                         f'<div style="margin-top:6px;">{reasons_html}</div>'
-                        f'{trap_html}'
-                        f'</div>',
+                        f"{trap_html}"
+                        f"</div>",
                         unsafe_allow_html=True,
                     )
 
@@ -1173,19 +1206,22 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 st.markdown('<div id="economic-news"></div>', unsafe_allow_html=True)
 st.markdown("### 📰 経済ニュース & PF影響")
 _news_as_of = st.session_state.get("last_refresh", "—")[:16]
-st.caption(f"主要指数・商品に関する最新ニュースと、ポートフォリオへの影響度を自動分析します。｜ 🕐 データ取得: {_news_as_of}")
+st.caption(
+    f"主要指数・商品に関する最新ニュースと、ポートフォリオへの影響度を自動分析します。｜ 🕐 データ取得: {_news_as_of}"
+)
 
 try:
     # キャッシュキー用にシンボルリストを文字列化
-    _pos_key = ",".join(
-        sorted(p.get("symbol", "") for p in positions if p.get("sector") != "Cash")
-    )
+    _pos_key = ",".join(sorted(p.get("symbol", "") for p in positions if p.get("sector") != "Cash"))
     _fx_for_news = snapshot.get("fx_rates", {})
 
     # ニュース取得は常にキーワードベース（LLM分析は統合分析で実行）
     econ_news = load_economic_news(
-        _pos_key, positions, _fx_for_news,
-        llm_enabled=False, llm_model=llm_model,
+        _pos_key,
+        positions,
+        _fx_for_news,
+        llm_enabled=False,
+        llm_model=llm_model,
         llm_cache_ttl=llm_cache_ttl_sec,
     )
 except Exception as _news_err:
@@ -1193,11 +1229,7 @@ except Exception as _news_err:
     econ_news = []
 
 # --- セッション内に LLM 分析結果があれば置換（手動・自動共通） ---
-if (
-    econ_news
-    and llm_enabled
-    and "_llm_news_results" in st.session_state
-):
+if econ_news and llm_enabled and "_llm_news_results" in st.session_state:
     econ_news = st.session_state["_llm_news_results"]
 
 if econ_news:
@@ -1212,26 +1244,25 @@ if econ_news:
                 st.caption("🤖 AI分析（" + llm_model + "）")
             elif "_llm_analyzed_at" in st.session_state:
                 import datetime as _dt_mn
-                _mn_at = _dt_mn.datetime.fromtimestamp(
-                    st.session_state["_llm_analyzed_at"]
-                ).strftime("%H:%M")
+
+                _mn_at = _dt_mn.datetime.fromtimestamp(st.session_state["_llm_analyzed_at"]).strftime("%H:%M")
                 st.caption(f"🤖 AI分析済み（{_mn_at}）— 🔑 ニュースはキーワードベース")
             else:
                 st.caption("🔑 キーワードベース分析（AI分析は手動実行）")
         with _manual_col2:
-            if st.button("🤖 AI分析を実行", key="manual_llm_run",
-                         help="LLM でニュース・ヘルスチェックを分析します"):
+            if st.button("🤖 AI分析を実行", key="manual_llm_run", help="LLM でニュース・ヘルスチェックを分析します"):
                 with st.spinner("AI分析中..."):
                     # 統合分析: 1回の LLM 呼び出しでニュース分析+サマリー+ヘルスチェックを実行
                     _unified = run_unified_analysis(
-                        econ_news, positions, health_data,
-                        model=llm_model, cache_ttl=llm_cache_ttl_sec,
+                        econ_news,
+                        positions,
+                        health_data,
+                        model=llm_model,
+                        cache_ttl=llm_cache_ttl_sec,
                     )
                     if _unified:
                         # ニュース分析結果を適用
-                        _analyzed = apply_news_analysis(
-                            econ_news, _unified.get("news_analysis", [])
-                        )
+                        _analyzed = apply_news_analysis(econ_news, _unified.get("news_analysis", []))
                         st.session_state["_llm_news_results"] = _analyzed
                         st.session_state["_llm_analyzed_at"] = time.time()
                         # ニュースサマリー
@@ -1262,14 +1293,11 @@ if econ_news:
 
     ncol1, ncol2, ncol3, ncol4 = st.columns(4)
     with ncol1:
-        st.markdown(_risk_card("🔴 高影響", str(_n_high),
-                               "#f87171" if _n_high > 0 else ""), unsafe_allow_html=True)
+        st.markdown(_risk_card("🔴 高影響", str(_n_high), "#f87171" if _n_high > 0 else ""), unsafe_allow_html=True)
     with ncol2:
-        st.markdown(_risk_card("🟡 中影響", str(_n_med),
-                               "#fbbf24" if _n_med > 0 else ""), unsafe_allow_html=True)
+        st.markdown(_risk_card("🟡 中影響", str(_n_med), "#fbbf24" if _n_med > 0 else ""), unsafe_allow_html=True)
     with ncol3:
-        st.markdown(_risk_card("🔵 低影響", str(_n_low),
-                               "#60a5fa" if _n_low > 0 else ""), unsafe_allow_html=True)
+        st.markdown(_risk_card("🔵 低影響", str(_n_low), "#60a5fa" if _n_low > 0 else ""), unsafe_allow_html=True)
     with ncol4:
         st.markdown(_risk_card("⚪ 影響なし", str(_n_none), ""), unsafe_allow_html=True)
 
@@ -1301,23 +1329,20 @@ if econ_news:
                 _news_ids = _kp.get("news_ids", [])
                 _ids_str = ""
                 if _news_ids:
-                    _id_links = [f'<span class="news-ref">#{nid+1}</span>' for nid in _news_ids]
+                    _id_links = [f'<span class="news-ref">#{nid + 1}</span>' for nid in _news_ids]
                     _ids_str = f' <span class="news-refs">{", ".join(_id_links)}</span>'
                 _summary_html += (
                     f'<div class="news-summary-point">'
                     f'<span class="news-summary-cat">{_icon} {_label}</span>'
                     f'<span class="news-summary-text">{_kp_summary}{_ids_str}</span>'
-                    f'</div>'
+                    f"</div>"
                 )
-            _summary_html += '</div>'
+            _summary_html += "</div>"
 
         if _pf_alert:
-            _summary_html += (
-                f'<div class="news-summary-alert">'
-                f'⚠️ <strong>PF注意</strong>: {_pf_alert}</div>'
-            )
+            _summary_html += f'<div class="news-summary-alert">⚠️ <strong>PF注意</strong>: {_pf_alert}</div>'
 
-        _summary_html += '</div>'
+        _summary_html += "</div>"
         st.markdown(_summary_html, unsafe_allow_html=True)
         st.markdown('<div class="kpi-spacer"></div>', unsafe_allow_html=True)
 
@@ -1342,35 +1367,26 @@ if econ_news:
                 # カテゴリバッジ
                 _cat_badges = ""
                 for cat in news_item.get("categories", []):
-                    _cat_badges += (
-                        f'<span class="news-badge news-badge-category">'
-                        f'{cat["icon"]} {cat["label"]}</span>'
-                    )
+                    _cat_badges += f'<span class="news-badge news-badge-category">{cat["icon"]} {cat["label"]}</span>'
 
                 # 影響度バッジ
                 _impact_badge = (
                     f'<span class="news-badge news-badge-{_impact_colors.get(_impact_level, "")}">'
-                    f'{_impact_labels.get(_impact_level, "")} — '
-                    f'{len(_impact["affected_holdings"])}銘柄</span>'
+                    f"{_impact_labels.get(_impact_level, '')} — "
+                    f"{len(_impact['affected_holdings'])}銘柄</span>"
                 )
 
                 # 影響銘柄リスト
                 _affected_html = ""
                 if _impact["affected_holdings"]:
                     _syms = ", ".join(_impact["affected_holdings"][:8])
-                    _affected_html = (
-                        f'<div class="news-affected">'
-                        f'📌 影響銘柄: {_syms}</div>'
-                    )
+                    _affected_html = f'<div class="news-affected">📌 影響銘柄: {_syms}</div>'
 
                 # LLM分析の理由（あれば表示）
                 _reason_html = ""
                 _reason = html.escape(_impact.get("reason", ""))
                 if _reason and news_item.get("analysis_method") == "llm":
-                    _reason_html = (
-                        f'<div style="font-size:0.82rem; margin-top:4px; opacity:0.85;">'
-                        f'💡 {_reason}</div>'
-                    )
+                    _reason_html = f'<div style="font-size:0.82rem; margin-top:4px; opacity:0.85;">💡 {_reason}</div>'
 
                 # タイトルリンク
                 # Why: ニュースタイトル・リンクは外部ソース由来のため XSS 防止
@@ -1378,10 +1394,7 @@ if econ_news:
                 _safe_title = html.escape(news_item.get("title", ""))
                 _disp_no = news_item.get("_display_number", "")
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
-                _title_html = (
-                    f'<a href="{_link}" target="_blank">{_safe_title}</a>'
-                    if _link else _safe_title
-                )
+                _title_html = f'<a href="{_link}" target="_blank">{_safe_title}</a>' if _link else _safe_title
 
                 # 発行元・日時
                 _pub = html.escape(news_item.get("publisher", ""))
@@ -1392,12 +1405,12 @@ if econ_news:
                 _meta_html = f'<div class="news-meta">{_meta}</div>' if _meta else ""
 
                 st.markdown(
-                    f'<div class="news-card news-{_impact_colors.get(_impact_level, "impact-none")}">' 
+                    f'<div class="news-card news-{_impact_colors.get(_impact_level, "impact-none")}">'
                     f'<div class="news-title">{_num_badge}{_title_html}</div>'
-                    f'{_meta_html}'
-                    f'{_affected_html}'
-                    f'{_reason_html}'
-                    f'</div>',
+                    f"{_meta_html}"
+                    f"{_affected_html}"
+                    f"{_reason_html}"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
 
@@ -1409,10 +1422,7 @@ if econ_news:
                 _safe_title = html.escape(news_item.get("title", ""))
                 _disp_no = news_item.get("_display_number", "")
                 _num_badge = f'<span class="news-number">#{_disp_no}</span>' if _disp_no else ""
-                _title_html = (
-                    f'<a href="{_link}" target="_blank">{_safe_title}</a>'
-                    if _link else _safe_title
-                )
+                _title_html = f'<a href="{_link}" target="_blank">{_safe_title}</a>' if _link else _safe_title
                 _pub = html.escape(news_item.get("publisher", ""))
                 _time = news_item.get("publish_time", "")
                 _source = html.escape(news_item.get("source_name", ""))
@@ -1421,17 +1431,14 @@ if econ_news:
 
                 _cat_badges = ""
                 for cat in news_item.get("categories", []):
-                    _cat_badges += (
-                        f'<span class="news-badge news-badge-category">'
-                        f'{cat["icon"]} {cat["label"]}</span>'
-                    )
+                    _cat_badges += f'<span class="news-badge news-badge-category">{cat["icon"]} {cat["label"]}</span>'
 
                 st.markdown(
                     f'<div class="news-card news-impact-none">'
                     f'<div class="news-title">{_num_badge}{_title_html}</div>'
                     f'<div class="news-meta">{_meta}</div>'
-                    f'<div>{_cat_badges}</div>'
-                    f'</div>',
+                    f"<div>{_cat_badges}</div>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
 else:
@@ -1448,6 +1455,7 @@ if _cli_logs:
                 st.rerun()
         for _log in _cli_logs:
             import datetime as _dt
+
             _ts = _dt.datetime.fromtimestamp(_log.timestamp).strftime("%H:%M:%S")
             _status = "✅" if _log.success else "❌"
             _src = f" [{_log.source}]" if _log.source else ""
@@ -1459,8 +1467,7 @@ if _cli_logs:
                 )
             else:
                 _detail = (
-                    f"**プロンプト** (先頭150文字):\n```\n{_log.prompt_preview}\n```\n\n"
-                    f"**エラー**: `{_log.error}`"
+                    f"**プロンプト** (先頭150文字):\n```\n{_log.prompt_preview}\n```\n\n**エラー**: `{_log.error}`"
                 )
             with st.expander(_header, expanded=False):
                 st.markdown(_detail)
@@ -1473,7 +1480,9 @@ st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 st.markdown('<div id="total-chart"></div>', unsafe_allow_html=True)
 st.markdown("### 📊 総資産推移")
 _history_as_of = str(history_df.index[-1])[:10] if not history_df.empty else "—"
-st.caption(f"資産全体の値動きを時系列で確認。ドローダウンやシャープレシオの推移も合わせて表示します。｜ 🕐 最終データ日: {_history_as_of}")
+st.caption(
+    f"資産全体の値動きを時系列で確認。ドローダウンやシャープレシオの推移も合わせて表示します。｜ 🕐 最終データ日: {_history_as_of}"
+)
 
 if not history_df.empty:
     # ベンチマーク系列の取得
@@ -1541,9 +1550,9 @@ if not history_df.empty:
                 f'<div style="text-align:center; padding:8px;">'
                 f'<span style="font-size:0.85rem; opacity:0.7;">🟢 楽観（{projection_years}年後）</span><br>'
                 f'<span style="font-size:1.3rem; font-weight:600; color:#4ade80;">'
-                f'¥{opt_val:,.0f}</span><br>'
+                f"¥{opt_val:,.0f}</span><br>"
                 f'<span style="font-size:0.8rem; color:#4ade80;">{opt_rate:+.1f}%</span>'
-                f'</div>',
+                f"</div>",
                 unsafe_allow_html=True,
             )
         with scol2:
@@ -1551,9 +1560,9 @@ if not history_df.empty:
                 f'<div style="text-align:center; padding:8px;">'
                 f'<span style="font-size:0.85rem; opacity:0.7;">🟣 ベース（{projection_years}年後）</span><br>'
                 f'<span style="font-size:1.3rem; font-weight:600; color:#a78bfa;">'
-                f'¥{base_val:,.0f}</span><br>'
+                f"¥{base_val:,.0f}</span><br>"
                 f'<span style="font-size:0.8rem; color:#a78bfa;">{base_rate_pct:+.1f}%</span>'
-                f'</div>',
+                f"</div>",
                 unsafe_allow_html=True,
             )
         with scol3:
@@ -1561,9 +1570,9 @@ if not history_df.empty:
                 f'<div style="text-align:center; padding:8px;">'
                 f'<span style="font-size:0.85rem; opacity:0.7;">🔴 悲観（{projection_years}年後）</span><br>'
                 f'<span style="font-size:1.3rem; font-weight:600; color:#f87171;">'
-                f'¥{pess_val:,.0f}</span><br>'
+                f"¥{pess_val:,.0f}</span><br>"
                 f'<span style="font-size:0.8rem; color:#f87171;">{pess_rate:+.1f}%</span>'
-                f'</div>',
+                f"</div>",
                 unsafe_allow_html=True,
             )
 
@@ -1581,41 +1590,52 @@ col_left, col_right = st.columns([3, 2])
 
 with col_left:
     st.markdown("### 🏢 銘柄別 評価額")
-    st.caption(f"保有銘柄ごとの評価額・損益率を確認。構成比の偏りや損益の大きい銘柄を把握できます。｜ 🕐 データ取得: {_holdings_as_of}")
+    st.caption(
+        f"保有銘柄ごとの評価額・損益率を確認。構成比の偏りや損益の大きい銘柄を把握できます。｜ 🕐 データ取得: {_holdings_as_of}"
+    )
 
-    holdings_df = pd.DataFrame([
-        {
-            "銘柄": f"{p['name']} ({p['symbol']})",
-            "保有数": p["shares"],
-            "現在価格": f"{p['current_price']:,.2f} {p.get('currency', '')}",
-            "評価額(円)": p["evaluation_jpy"],
-            "構成比": p["evaluation_jpy"] / total_value * 100 if total_value else 0,
-            "損益(円)": p.get("pnl_jpy", 0),
-            "損益率(%)": p.get("pnl_pct", 0),
-            "通貨": p.get("currency", ""),
-            "セクター": p.get("sector", ""),
-        }
-        for p in positions
-    ])
+    holdings_df = pd.DataFrame(
+        [
+            {
+                "銘柄": f"{p['name']} ({p['symbol']})",
+                "保有数": p["shares"],
+                "現在価格": f"{p['current_price']:,.2f} {p.get('currency', '')}",
+                "評価額(円)": p["evaluation_jpy"],
+                "構成比": p["evaluation_jpy"] / total_value * 100 if total_value else 0,
+                "損益(円)": p.get("pnl_jpy", 0),
+                "損益率(%)": p.get("pnl_pct", 0),
+                "通貨": p.get("currency", ""),
+                "セクター": p.get("sector", ""),
+            }
+            for p in positions
+        ]
+    )
 
     if not holdings_df.empty:
         # 評価額でソート
         holdings_df = holdings_df.sort_values("評価額(円)", ascending=False)
 
         st.dataframe(
-            holdings_df.style.format({
-                "評価額(円)": "¥{:,.0f}",
-                "構成比": "{:.1f}%",
-                "損益(円)": "¥{:,.0f}",
-                "損益率(%)": "{:+.1f}%",
-            }).background_gradient(
+            holdings_df.style.format(
+                {
+                    "評価額(円)": "¥{:,.0f}",
+                    "構成比": "{:.1f}%",
+                    "損益(円)": "¥{:,.0f}",
+                    "損益率(%)": "{:+.1f}%",
+                }
+            )
+            .background_gradient(
                 subset=["損益率(%)"],
                 cmap="RdYlGn",
                 vmin=-30,
                 vmax=30,
-            ).map(
-                lambda v: "color: #4ade80" if isinstance(v, (int, float)) and v > 0
-                else ("color: #f87171" if isinstance(v, (int, float)) and v < 0 else ""),
+            )
+            .map(
+                lambda v: (
+                    "color: #4ade80"
+                    if isinstance(v, (int, float)) and v > 0
+                    else ("color: #f87171" if isinstance(v, (int, float)) and v < 0 else "")
+                ),
                 subset=["損益(円)"],
             ),
             width="stretch",
@@ -1679,10 +1699,10 @@ if drift_alerts:
                 f'<span style="font-size:0.8rem; opacity:0.7;">{icon} {label}</span><br>'
                 f'<span style="font-size:1.1rem; font-weight:600;">{alert["name"]}</span><br>'
                 f'<span style="font-size:0.85rem;">現在 {alert["current_pct"]:.1f}% '
-                f'→ 目標 {alert["target_pct"]:.1f}%</span><br>'
+                f"→ 目標 {alert['target_pct']:.1f}%</span><br>"
                 f'<span style="font-size:1.0rem; font-weight:600; color:{color};">'
-                f'{alert["drift_pct"]:+.1f}pp</span>'
-                f'</div>',
+                f"{alert['drift_pct']:+.1f}pp</span>"
+                f"</div>",
                 unsafe_allow_html=True,
             )
 
@@ -1780,7 +1800,9 @@ st.markdown('<div id="trade-activity"></div>', unsafe_allow_html=True)
 st.markdown("### 🔄 月次売買アクティビティ")
 trade_act_df = load_trade_activity()
 _trade_as_of = str(trade_act_df.index[-1])[:7] if not trade_act_df.empty else "—"
-st.caption(f"月ごとの売買件数・金額フローを表示。投資ペースや資金の出入りを振り返るのに便利です。｜ 🕐 最終データ月: {_trade_as_of}")
+st.caption(
+    f"月ごとの売買件数・金額フローを表示。投資ペースや資金の出入りを振り返るのに便利です。｜ 🕐 最終データ月: {_trade_as_of}"
+)
 if not trade_act_df.empty:
     col_flow, col_tbl = st.columns([2, 1])
 
@@ -1790,17 +1812,17 @@ if not trade_act_df.empty:
 
     with col_tbl:
         display_act = trade_act_df.copy()
-        display_act.columns = [
-            "購入件数", "購入額(円)", "売却件数", "売却額(円)", "ネット(円)"
-        ]
+        display_act.columns = ["購入件数", "購入額(円)", "売却件数", "売却額(円)", "ネット(円)"]
         st.dataframe(
-            display_act.style.format({
-                "購入件数": "{:.0f}",
-                "購入額(円)": "¥{:,.0f}",
-                "売却件数": "{:.0f}",
-                "売却額(円)": "¥{:,.0f}",
-                "ネット(円)": "¥{:,.0f}",
-            }),
+            display_act.style.format(
+                {
+                    "購入件数": "{:.0f}",
+                    "購入額(円)": "¥{:,.0f}",
+                    "売却件数": "{:.0f}",
+                    "売却額(円)": "¥{:,.0f}",
+                    "ネット(円)": "¥{:,.0f}",
+                }
+            ),
             width="stretch",
         )
 else:
@@ -1854,7 +1876,9 @@ def _build_chat_context() -> str:
         _eval_jpy = p.get("evaluation_jpy", 0)
         _sector = p.get("sector", "")
         _weight = (_eval_jpy / total_value * 100) if total_value else 0
-        parts.append(f"- {_name} ({_sym}): 評価額¥{_eval_jpy:,.0f} 構成比{_weight:.1f}% 損益{_pnl:+.1f}% セクター:{_sector}")
+        parts.append(
+            f"- {_name} ({_sym}): 評価額¥{_eval_jpy:,.0f} 構成比{_weight:.1f}% 損益{_pnl:+.1f}% セクター:{_sector}"
+        )
 
     # ヘルスチェック結果
     if health_data is not None:
@@ -1875,7 +1899,9 @@ def _build_chat_context() -> str:
         if _hc_alerts_list:
             parts.append("\n## 売りタイミング通知")
             for _sa_ctx in _hc_alerts_list:
-                parts.append(f"- {_sa_ctx.get('name', '')} ({_sa_ctx.get('symbol', '')}): {_sa_ctx.get('action', '')} — {_sa_ctx.get('reason', '')}")
+                parts.append(
+                    f"- {_sa_ctx.get('name', '')} ({_sa_ctx.get('symbol', '')}): {_sa_ctx.get('action', '')} — {_sa_ctx.get('reason', '')}"
+                )
 
     # LLM ヘルスサマリー（session_stateに格納されていれば利用）
     _chat_hc_summary = st.session_state.get("_hc_llm_summary_data")
@@ -1890,7 +1916,7 @@ def _build_chat_context() -> str:
 
     # 経済ニュース
     try:
-        _chat_econ_news = econ_news  # noqa: F841 — top-level variable
+        _chat_econ_news = econ_news
     except NameError:
         _chat_econ_news = []
     if _chat_econ_news:
@@ -1924,14 +1950,11 @@ try:
 except NameError:
     pass
 
-_badges_html = " ".join(
-    f'<span class="copilot-chat-context-badge">{item}</span>'
-    for item in _ctx_items
-)
+_badges_html = " ".join(f'<span class="copilot-chat-context-badge">{item}</span>' for item in _ctx_items)
 st.markdown(
     f'<div style="margin-bottom:10px;">'
     f'<span style="font-size:0.82rem; opacity:0.7;">📎 自動添付コンテキスト:</span> '
-    f'{_badges_html}</div>',
+    f"{_badges_html}</div>",
     unsafe_allow_html=True,
 )
 
@@ -1940,11 +1963,7 @@ _chat_col_model, _chat_col_clear = st.columns([4, 1])
 with _chat_col_model:
     _chat_model_ids = [m[0] for m in COPILOT_MODELS]
     _chat_model_labels = [m[1] for m in COPILOT_MODELS]
-    _chat_model_current_idx = (
-        _chat_model_ids.index(chat_model)
-        if chat_model in _chat_model_ids
-        else 0
-    )
+    _chat_model_current_idx = _chat_model_ids.index(chat_model) if chat_model in _chat_model_ids else 0
     st.caption(f"🧠 モデル: **{_chat_model_labels[_chat_model_current_idx]}**（設定で変更可能）")
 with _chat_col_clear:
     if st.button("🗑️ クリア", key="copilot_chat_clear"):
@@ -1958,14 +1977,14 @@ for _msg in st.session_state["copilot_chat_messages"]:
             f'<div class="copilot-chat-msg copilot-chat-msg-user">'
             f'<div class="copilot-chat-msg-role">👤 あなた</div>'
             f'<div class="copilot-chat-msg-text">{_msg["content"]}</div>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
             '<div class="copilot-chat-msg copilot-chat-msg-ai">'
             '<div class="copilot-chat-msg-role">🤖 Copilot</div>'
-            '</div>',
+            "</div>",
             unsafe_allow_html=True,
         )
         st.markdown(_msg["content"])
@@ -1978,9 +1997,7 @@ _chat_input = st.chat_input(
 
 if _chat_input:
     # ユーザーメッセージを追加
-    st.session_state["copilot_chat_messages"].append(
-        {"role": "user", "content": _chat_input}
-    )
+    st.session_state["copilot_chat_messages"].append({"role": "user", "content": _chat_input})
 
     # コンテキスト付きプロンプトを構築
     _dashboard_ctx = _build_chat_context()
@@ -2011,9 +2028,7 @@ if _chat_input:
         )
 
     if _chat_response:
-        st.session_state["copilot_chat_messages"].append(
-            {"role": "assistant", "content": _chat_response}
-        )
+        st.session_state["copilot_chat_messages"].append({"role": "assistant", "content": _chat_response})
     else:
         st.session_state["copilot_chat_messages"].append(
             {"role": "assistant", "content": "⚠️ 応答を取得できませんでした。Copilot CLI の状態を確認してください。"}
@@ -2025,6 +2040,5 @@ if _chat_input:
 # =====================================================================
 st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 st.caption(
-    "Data provided by Yahoo Finance via yfinance. "
-    "Values are estimates and may differ from actual brokerage accounts."
+    "Data provided by Yahoo Finance via yfinance. Values are estimates and may differ from actual brokerage accounts."
 )
