@@ -1,6 +1,6 @@
 [project]
 name = "stock_dashboard"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 # =====================================================================
 # ruff — Python linter & formatter
@@ -8,7 +8,7 @@ requires-python = ">=3.10"
 # How: Flake8 + isort + pyupgrade 等を統合した高速リンター
 # =====================================================================
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 src = ["components", "src", "tests"]
 
@@ -57,7 +57,7 @@ indent-style = "space"
 # How: 段階的導入 — まず基本チェックから開始
 # =====================================================================
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # 段階的に true へ移行
