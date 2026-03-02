@@ -94,6 +94,11 @@ class TestSaveSettings:
             "llm_model": "claude-sonnet-4",
             "llm_cache_ttl_label": "3時間",
             "chat_model": "gpt-4.1",
+            "insights_enabled": False,
+            "trade_preview_enabled": False,
+            "trade_preview_llm": False,
+            "watchlist_llm_enabled": False,
+            "attribution_llm_enabled": False,
         }
         save_settings(settings, p)
         loaded = load_settings(p)

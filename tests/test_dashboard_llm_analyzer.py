@@ -31,9 +31,12 @@ from components.llm_analyzer import (
     apply_news_analysis,
     clear_cache,
     clear_health_summary_cache,
+    clear_insights_cache,
     clear_summary_cache,
     clear_unified_cache,
+    generate_attribution_summary,
     generate_health_summary,
+    generate_insights,
     generate_news_summary,
     get_cache_info,
     get_health_summary_cache_info,
@@ -1624,6 +1627,101 @@ class TestApplyNewsAnalysis:
         result = apply_news_analysis(news, analysis)
         analyzed = [n for n in result if n.get("analysis_method") == "llm"]
         assert analyzed[0]["portfolio_impact"]["impact_level"] == "none"
+
+
+# ---------------------------------------------------------------------------
+# generate_insights tests
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateInsights:
+    """AI Insights パネル用のインサイト生成テスト."""
+
+    _mock_snapshot: dict = {
+        "total_value_jpy": 10000000,
+        "total_pnl_jpy": 500000,
+        "total_pnl_pct": 5.0,
+        "positions": [{"symbol": "AAPL", "sector": "Technology"}],
+    }
+    _mock_structure: dict = {
+        "sector_breakdown": {"Technology": 0.5, "自動車": 0.3},
+        "currency_breakdown": {"USD": 0.7, "JPY": 0.3},
+        "risk_level": "やや集中",
+        "sector_hhi": 0.34,
+    }
+
+    def setup_method(self):
+        clear_insights_cache()
+
+    @patch("components.llm_analyzer.is_available", return_value=False)
+    def test_returns_none_when_copilot_unavailable(self, _mock_avail):
+        result = generate_insights(self._mock_snapshot, self._mock_structure)
+        assert result is None
+
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_returns_insights_list(self, _mock_avail, mock_call):
+        insights = [
+            "🟢 ポートフォリオ全体で+5.0%の含み益。利確タイミングを検討",
+            "🟡 Technology セクターが50%を占め集中リスクに注意",
+            "💱 USD比率70%: 円高局面でのヘッジを検討",
+        ]
+        mock_call.return_value = json.dumps(insights, ensure_ascii=False)
+        result = generate_insights(self._mock_snapshot, self._mock_structure)
+        assert result is not None
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert result[0].startswith("🟢")
+
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_returns_none_on_invalid_json(self, _mock_avail, mock_call):
+        mock_call.return_value = "This is not valid JSON at all"
+        result = generate_insights(self._mock_snapshot, self._mock_structure)
+        assert result is None
+
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_caching(self, _mock_avail, mock_call):
+        insights = ["🟢 テスト用インサイト"]
+        mock_call.return_value = json.dumps(insights, ensure_ascii=False)
+        result1 = generate_insights(self._mock_snapshot, self._mock_structure)
+        result2 = generate_insights(self._mock_snapshot, self._mock_structure)
+        assert result1 == result2
+        assert mock_call.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# generate_attribution_summary tests
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateAttributionSummary:
+    """パフォーマンス寄与分析 LLM サマリーのテスト."""
+
+    _mock_attribution: dict = {
+        "total_pnl_pct": 5.0,
+        "stocks": [
+            {"symbol": "AAPL", "name": "Apple", "contribution_pct": 3.0, "pnl_pct": 15.0, "sector": "Technology"},
+            {"symbol": "7203.T", "name": "トヨタ", "contribution_pct": 1.5, "pnl_pct": 8.0, "sector": "自動車"},
+            {"symbol": "MSFT", "name": "Microsoft", "contribution_pct": 0.5, "pnl_pct": 5.0, "sector": "Technology"},
+            {"symbol": "9984.T", "name": "SBG", "contribution_pct": -1.0, "pnl_pct": -10.0, "sector": "通信"},
+        ],
+    }
+
+    @patch("components.llm_analyzer.copilot_call")
+    @patch("components.llm_analyzer.is_available", return_value=True)
+    def test_returns_summary_string(self, _mock_avail, mock_call):
+        mock_call.return_value = "Apple が最大の寄与銘柄であり、Technology セクターが牽引しています。"
+        result = generate_attribution_summary(self._mock_attribution)
+        assert result is not None
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    @patch("components.llm_analyzer.is_available", return_value=False)
+    def test_returns_none_when_unavailable(self, _mock_avail):
+        result = generate_attribution_summary(self._mock_attribution)
+        assert result is None
 
 
 # ---------------------------------------------------------------------------

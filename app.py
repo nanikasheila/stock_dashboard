@@ -24,6 +24,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 
 from components.charts import (
+    build_attribution_chart,
     build_correlation_chart,
     build_currency_chart,
     build_drawdown_chart,
@@ -60,6 +61,7 @@ from components.data_loader import (
     compute_correlation_matrix,
     compute_daily_change,
     compute_drawdown_series,
+    compute_performance_attribution,
     compute_risk_metrics,
     compute_rolling_sharpe,
     compute_top_worst_performers,
@@ -77,6 +79,8 @@ from components.llm_analyzer import (
 )
 from components.llm_analyzer import (
     apply_news_analysis,
+    generate_attribution_summary,
+    generate_insights,
     run_unified_analysis,
 )
 from components.llm_analyzer import (
@@ -99,6 +103,7 @@ from components.llm_analyzer import (
 )
 from components.settings_store import load_settings, save_settings
 from components.trade_form import render_trade_form
+from components.watchlist import render_watchlist
 
 # =====================================================================
 # ページ設定
@@ -477,6 +482,44 @@ with _tab_settings:
         )
         chat_model = _chat_model_ids[_chat_model_labels.index(chat_model_label)]
 
+        # --- 機能別 AI ON/OFF ---
+        st.markdown("---")
+        st.markdown("**機能別 AI 設定**")
+
+        insights_enabled = st.checkbox(
+            "💡 AIインサイト",
+            value=_saved.get("insights_enabled", True),
+            help="KPIサマリーの下にAI生成のアクション可能なインサイトを表示",
+            disabled=not _llm_available,
+        )
+
+        trade_preview_enabled = st.checkbox(
+            "📊 取引影響プレビュー",
+            value=_saved.get("trade_preview_enabled", True),
+            help="取引フォームで影響分析ボタンを表示",
+        )
+
+        trade_preview_llm = st.checkbox(
+            "🤖 取引プレビューAIコメント",
+            value=_saved.get("trade_preview_llm", True),
+            help="取引影響プレビューでLLMコメントを表示",
+            disabled=not _llm_available or not trade_preview_enabled,
+        )
+
+        watchlist_llm_enabled = st.checkbox(
+            "👀 ウォッチリストAI分析",
+            value=_saved.get("watchlist_llm_enabled", True),
+            help="ウォッチリストの個別銘柄に対してAI分析ボタンを表示",
+            disabled=not _llm_available,
+        )
+
+        attribution_llm_enabled = st.checkbox(
+            "📈 パフォーマンス寄与LLMサマリー",
+            value=_saved.get("attribution_llm_enabled", True),
+            help="パフォーマンス寄与分析にLLMの要因分析コメントを表示",
+            disabled=not _llm_available,
+        )
+
     # キャッシュ状態を表示
     if llm_enabled:
         _ci = llm_get_cache_info()
@@ -530,6 +573,11 @@ with _tab_settings:
         "llm_model": llm_model,
         "llm_cache_ttl_label": llm_cache_ttl_label,
         "chat_model": chat_model,
+        "insights_enabled": insights_enabled,
+        "trade_preview_enabled": trade_preview_enabled,
+        "trade_preview_llm": trade_preview_llm,
+        "watchlist_llm_enabled": watchlist_llm_enabled,
+        "attribution_llm_enabled": attribution_llm_enabled,
     }
     if _current_settings != _saved:
         save_settings(_current_settings)
@@ -888,16 +936,33 @@ if not history_df.empty:
 
 
 # =====================================================================
+# AI インサイトパネル
+# Why: ダッシュボードを開いた瞬間に「今注目すべきこと」を把握する
+# How: LLM がスナップショット・ヘルスチェック等から 3-5 個のインサイトを生成
+# =====================================================================
+if insights_enabled and llm_enabled and llm_is_available():
+    _insight_results = generate_insights(
+        snapshot,
+        {},
+    )
+    if _insight_results:
+        st.markdown("### 💡 AI インサイト")
+        for _insight_text in _insight_results:
+            st.info(_insight_text, icon=None)
+
+
+# =====================================================================
 # タブ構造 — セクションをタブで整理して情報過負荷を解消
 # Why: 2000行超のコンテンツが1ページに並び、スクロール負荷が高い
-# How: st.tabs() で5つのタブに分割し、関心領域ごとにアクセス可能にする
+# How: st.tabs() で6つのタブに分割し、関心領域ごとにアクセス可能にする
 # =====================================================================
-_tab_health, _tab_charts, _tab_holdings, _tab_monthly, _tab_copilot = st.tabs(
+_tab_health, _tab_charts, _tab_holdings, _tab_monthly, _tab_watchlist, _tab_copilot = st.tabs(
     [
         "🏥 ヘルス & ニュース",
         "📊 チャート分析",
         "🏢 保有構成",
         "📅 月次 & 売買",
+        "👀 ウォッチリスト",
         "💬 Copilot",
     ]
 )
@@ -1636,6 +1701,36 @@ with _tab_charts:
                     unsafe_allow_html=True,
                 )
 
+        # ---------------------------------------------------------------
+        # パフォーマンス寄与分析
+        # ---------------------------------------------------------------
+        st.markdown("---")
+        st.markdown("### 📈 パフォーマンス寄与分析")
+        st.caption("ポートフォリオ全体のリターンに対する各銘柄・セクターの寄与度を確認します。")
+
+        _attribution = compute_performance_attribution(snapshot)
+        if _attribution and _attribution.get("by_stock"):
+            _attr_col1, _attr_col2 = st.columns(2)
+            with _attr_col1:
+                st.markdown("#### 銘柄別")
+                fig_attr_stock = build_attribution_chart(_attribution, by="stock")
+                st.plotly_chart(fig_attr_stock, key="chart_attr_stock", use_container_width=True)
+            with _attr_col2:
+                st.markdown("#### セクター別")
+                fig_attr_sector = build_attribution_chart(_attribution, by="sector")
+                st.plotly_chart(fig_attr_sector, key="chart_attr_sector", use_container_width=True)
+
+            if attribution_llm_enabled and llm_enabled and llm_is_available():
+                if st.button("🤖 AI 要因分析", key="btn_attr_llm"):
+                    with st.spinner("AI が要因を分析中..."):
+                        _attr_summary = generate_attribution_summary(_attribution)
+                        if _attr_summary:
+                            st.info(_attr_summary)
+                        else:
+                            st.warning("要因分析の生成に失敗しました。")
+        else:
+            st.info("寄与分析に必要なデータがありません。")
+
     else:
         st.warning("株価履歴データが取得できませんでした。")
 
@@ -1886,7 +1981,18 @@ with _tab_monthly:
     else:
         st.info("取引データがありません")
 
-    render_trade_form()
+    render_trade_form(snapshot=snapshot, settings=_current_settings)
+
+
+with _tab_watchlist:
+    # =====================================================================
+    # ウォッチリスト
+    # Why: 購入検討中の銘柄を追跡し、意思決定を支援する
+    # How: render_watchlist() が CRUD + 価格表示 + AI 分析を一括描画
+    # =====================================================================
+    st.markdown('<div id="watchlist" role="region" aria-label="ウォッチリスト"></div>', unsafe_allow_html=True)
+    _fx_rates = snapshot.get("fx_rates", {})
+    render_watchlist(_current_settings, _fx_rates)
 
 
 with _tab_copilot:
