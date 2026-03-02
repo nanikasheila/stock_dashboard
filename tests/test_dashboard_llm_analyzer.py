@@ -273,6 +273,20 @@ class TestParseResponse:
         assert result[0]["id"] == 0
         assert result[1]["id"] == 1
 
+    def test_unclosed_code_fence_with_valid_json(self):
+        """Opening ```json with no closing ``` should not crash; valid JSON is still parsed."""
+        raw = '```json\n[{"id": 0, "categories": [], "impact_level": "none", "affected_holdings": [], "reason": ""}]'
+        result = _parse_response(raw, 1)
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["impact_level"] == "none"
+
+    def test_unclosed_code_fence_with_invalid_json(self):
+        """Opening ```json with no closing ``` and invalid JSON should return None."""
+        raw = "```json\nthis is not valid json at all"
+        result = _parse_response(raw, 1)
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # analyze_news_batch tests
@@ -640,6 +654,19 @@ class TestParseSummaryResponse:
         assert result is not None
         assert result["key_points"] == []
 
+    def test_unclosed_code_fence_with_valid_json(self):
+        """Opening ```json with no closing ``` should not crash; valid JSON is still parsed."""
+        raw = '```json\n{"overview": "概要", "key_points": [], "portfolio_alert": ""}'
+        result = _parse_summary_response(raw)
+        assert result is not None
+        assert result["overview"] == "概要"
+
+    def test_unclosed_code_fence_with_invalid_json(self):
+        """Opening ```json with no closing ``` and invalid JSON should return None."""
+        raw = "```json\nnot valid json"
+        result = _parse_summary_response(raw)
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # generate_news_summary tests
@@ -860,6 +887,19 @@ class TestParseHealthSummaryResponse:
         assert result is not None
         assert len(result["stock_assessments"]) == 2
         assert result["stock_assessments"][1]["action"] == "損切り検討"
+
+    def test_unclosed_code_fence_with_valid_json(self):
+        """Opening ```json with no closing ``` should not crash; valid JSON is still parsed."""
+        raw = '```json\n{"overview": "ok", "stock_assessments": [], "risk_warning": ""}'
+        result = _parse_health_summary_response(raw)
+        assert result is not None
+        assert result["overview"] == "ok"
+
+    def test_unclosed_code_fence_with_invalid_json(self):
+        """Opening ```json with no closing ``` and invalid JSON should return None."""
+        raw = "```json\nnot valid json"
+        result = _parse_health_summary_response(raw)
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -1262,6 +1302,19 @@ class TestExtractJsonText:
         text = '{"key": "value"}\nSome trailing text'
         result = _extract_json_text(text)
         assert result == '{"key": "value"}'
+
+    def test_unclosed_code_fence_with_valid_json(self):
+        """Opening ```json with no closing ``` should not crash; valid JSON is still extracted."""
+        text = '```json\n{"key": "value"}'
+        result = _extract_json_text(text)
+        assert result is not None
+        assert result == '{"key": "value"}'
+
+    def test_unclosed_code_fence_with_invalid_content(self):
+        """Opening ```json with no closing ``` and no JSON structure should return None."""
+        text = "```json\nplain text with no braces"
+        result = _extract_json_text(text)
+        assert result is None
 
 
 # ---------------------------------------------------------------------------

@@ -276,12 +276,12 @@ def _parse_response(raw_text: str, expected_count: int) -> list[dict] | None:
     # ```json ... ``` ブロックを抽出
     if "```json" in text:
         start = text.index("```json") + 7
-        end = text.index("```", start)
-        text = text[start:end].strip()
+        end = text.find("```", start)
+        text = (text[start:end] if end != -1 else text[start:]).strip()
     elif "```" in text:
         start = text.index("```") + 3
-        end = text.index("```", start)
-        text = text[start:end].strip()
+        end = text.find("```", start)
+        text = (text[start:end] if end != -1 else text[start:]).strip()
 
     # [ で始まる JSON を探す
     if not text.startswith("["):
@@ -514,12 +514,12 @@ def _parse_summary_response(raw_text: str) -> dict | None:
     # ```json ... ``` ブロックを抽出
     if "```json" in text:
         start = text.index("```json") + 7
-        end = text.index("```", start)
-        text = text[start:end].strip()
+        end = text.find("```", start)
+        text = (text[start:end] if end != -1 else text[start:]).strip()
     elif "```" in text:
         start = text.index("```") + 3
-        end = text.index("```", start)
-        text = text[start:end].strip()
+        end = text.find("```", start)
+        text = (text[start:end] if end != -1 else text[start:]).strip()
 
     # { で始まる JSON を探す（配列 [ は拒否）
     if text.startswith("["):
@@ -865,12 +865,12 @@ def _parse_health_summary_response(raw_text: str) -> dict | None:
     # ```json ... ``` ブロックを抽出
     if "```json" in text:
         start = text.index("```json") + 7
-        end = text.index("```", start)
-        text = text[start:end].strip()
+        end = text.find("```", start)
+        text = (text[start:end] if end != -1 else text[start:]).strip()
     elif "```" in text:
         start = text.index("```") + 3
-        end = text.index("```", start)
-        text = text[start:end].strip()
+        end = text.find("```", start)
+        text = (text[start:end] if end != -1 else text[start:]).strip()
 
     # { で始まる JSON を探す（配列 [ は拒否）
     if text.startswith("["):
@@ -1293,12 +1293,12 @@ def _extract_json_text(raw_text: str) -> str | None:
     # ```json ... ``` ブロックを抽出
     if "```json" in text:
         start = text.index("```json") + 7
-        end = text.index("```", start)
-        text = text[start:end].strip()
+        end = text.find("```", start)
+        text = (text[start:end] if end != -1 else text[start:]).strip()
     elif "```" in text:
         start = text.index("```") + 3
-        end = text.index("```", start)
-        text = text[start:end].strip()
+        end = text.find("```", start)
+        text = (text[start:end] if end != -1 else text[start:]).strip()
 
     # { で始まる JSON を探す
     if not text.startswith("{") and not text.startswith("["):
