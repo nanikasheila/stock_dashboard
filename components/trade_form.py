@@ -63,7 +63,10 @@ _DEFAULT_FX_RATE: dict[str, float] = {
 }
 
 
-def render_trade_form() -> None:
+def render_trade_form(
+    snapshot: dict | None = None,
+    settings: dict | None = None,
+) -> None:
     """Render a collapsible trade input form in the Streamlit dashboard.
 
     Why: Providing inline trade recording avoids context-switching to file
@@ -74,10 +77,13 @@ def render_trade_form() -> None:
          and calls st.rerun() so the dashboard reflects the new data.
     """
     with st.expander("➕ 取引を記録する", expanded=False):
-        _render_form_body()
+        _render_form_body(snapshot=snapshot, settings=settings)
 
 
-def _render_form_body() -> None:
+def _render_form_body(
+    snapshot: dict | None = None,
+    settings: dict | None = None,
+) -> None:
     """Render the form fields and handle submission.
 
     Why: Separated from render_trade_form to keep the expander wrapper thin
@@ -183,6 +189,34 @@ def _render_form_body() -> None:
             type="primary",
             use_container_width=True,
         )
+
+    # --- 取引影響プレビュー ---
+    _trade_preview_enabled = (settings or {}).get("trade_preview_enabled", False)
+    if _trade_preview_enabled and snapshot and not is_transfer:
+        _symbol_val = st.session_state.get("trade_form_symbol", "").strip().upper()
+        _shares_val = st.session_state.get("trade_form_shares", 0)
+        _price_val = st.session_state.get("trade_form_price", 0.0)
+        _fx_val = st.session_state.get("trade_form_fx_rate", 1.0)
+        _currency_val = st.session_state.get("trade_form_currency", "USD")
+        _type_val = st.session_state.get("trade_form_type", "buy")
+
+        if _symbol_val and _shares_val > 0 and _price_val > 0:
+            if st.button("📊 影響分析", key="btn_trade_impact"):
+                from components.trade_impact import (
+                    compute_trade_impact,
+                    render_trade_impact,
+                )
+
+                _impact = compute_trade_impact(
+                    snapshot=snapshot,
+                    trade_type=_type_val,
+                    symbol=_symbol_val,
+                    shares=int(_shares_val),
+                    price=float(_price_val),
+                    currency=_currency_val,
+                    fx_rate=float(_fx_val),
+                )
+                render_trade_impact(_impact, settings or {})
 
     if submitted:
         _handle_submit(

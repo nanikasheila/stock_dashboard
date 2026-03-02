@@ -15,6 +15,7 @@ import time as _time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -2290,6 +2291,65 @@ def fetch_economic_news(
     )
 
     return all_news
+
+
+def compute_performance_attribution(
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    """Compute per-stock and per-sector performance attribution.
+
+    Why: Users need to understand which stocks/sectors drive portfolio
+         returns so they can make informed rebalancing decisions.
+    How: Iterate non-cash positions, compute each stock's PnL contribution
+         relative to total cost, then aggregate by sector.  Results are
+         sorted by contribution (biggest first).
+    """
+    positions: list[dict] = snapshot.get("positions", [])
+    total_value_jpy: float = snapshot.get("total_value_jpy", 0.0)
+
+    stock_positions = [p for p in positions if not is_cash(p.get("symbol", ""))]
+
+    total_cost_jpy = sum(p.get("cost_jpy", 0.0) for p in stock_positions)
+    total_pnl_jpy = sum(p.get("pnl_jpy", 0.0) for p in stock_positions)
+    total_pnl_pct = (total_pnl_jpy / total_cost_jpy * 100) if total_cost_jpy else 0.0
+
+    by_stock: list[dict[str, Any]] = []
+    sector_agg: dict[str, dict[str, float]] = {}
+
+    for p in stock_positions:
+        pnl = p.get("pnl_jpy", 0.0)
+        cost = p.get("cost_jpy", 0.0)
+        evaluation = p.get("evaluation_jpy", 0.0)
+        sector = p.get("sector", "") or "不明"
+
+        contribution_pct = (pnl / total_cost_jpy * 100) if total_cost_jpy else 0.0
+        weight_pct = (evaluation / total_value_jpy * 100) if total_value_jpy else 0.0
+
+        by_stock.append(
+            {
+                "symbol": p.get("symbol", ""),
+                "sector": sector,
+                "pnl_jpy": pnl,
+                "cost_jpy": cost,
+                "contribution_pct": contribution_pct,
+                "weight_pct": weight_pct,
+            }
+        )
+
+        if sector not in sector_agg:
+            sector_agg[sector] = {"pnl_jpy": 0.0, "contribution_pct": 0.0}
+        sector_agg[sector]["pnl_jpy"] += pnl
+        sector_agg[sector]["contribution_pct"] += contribution_pct
+
+    by_stock.sort(key=lambda x: x["contribution_pct"], reverse=True)
+
+    return {
+        "by_stock": by_stock,
+        "by_sector": sector_agg,
+        "total_cost_jpy": total_cost_jpy,
+        "total_pnl_jpy": total_pnl_jpy,
+        "total_pnl_pct": total_pnl_pct,
+    }
 
 
 def _apply_llm_results(all_news: list[dict], llm_results: list[dict]) -> None:
