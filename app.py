@@ -942,9 +942,40 @@ if not history_df.empty:
 # How: LLM がスナップショット・ヘルスチェック等から 3-5 個のインサイトを生成
 # =====================================================================
 if insights_enabled and llm_enabled and llm_is_available():
+    # ヘルスデータとセクター情報を事前取得（キャッシュ済みなのでコスト無し）
+    _ins_health_data = load_health_check()
+    _ins_health_results: list[dict] = []
+    _ins_sell_alerts: list[dict] = []
+    if _ins_health_data is not None:
+        _ins_health_results = _ins_health_data.get("positions", [])
+        _ins_sell_alerts = _ins_health_data.get("sell_alerts", [])
+
+    _ins_sector_df = get_sector_breakdown(snapshot)
+    _ins_sector_bd: dict[str, float] = {}
+    if _ins_sector_df is not None and not _ins_sector_df.empty and "sector" in _ins_sector_df.columns:
+        _ins_total = _ins_sector_df["evaluation_jpy"].sum()
+        if _ins_total > 0:
+            _ins_sector_bd = {
+                row["sector"]: round(row["evaluation_jpy"] / _ins_total * 100, 1)
+                for _, row in _ins_sector_df.iterrows()
+            }
+
+    _ins_positions = snapshot.get("positions", [])
+    _ins_currency_bd: dict[str, int] = {}
+    for _p in _ins_positions:
+        _cur = _p.get("currency", "JPY")
+        _ins_currency_bd[_cur] = _ins_currency_bd.get(_cur, 0) + 1
+
+    _ins_structure = {
+        "sector_breakdown": _ins_sector_bd,
+        "currency_breakdown": _ins_currency_bd,
+    }
+
     _insight_results = generate_insights(
         snapshot,
-        {},
+        _ins_structure,
+        health_results=_ins_health_results,
+        sell_alerts=_ins_sell_alerts,
     )
     if _insight_results:
         st.markdown("### 💡 AI インサイト")
