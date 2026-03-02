@@ -38,13 +38,16 @@ from components.charts import (
     build_treemap_chart,
 )
 from components.copilot_client import (
-    AVAILABLE_MODELS as COPILOT_MODELS,
-)
-from components.copilot_client import (
     call_with_session,
 )
 from components.copilot_client import (
     clear_execution_logs as copilot_clear_logs,
+)
+from components.copilot_client import (
+    get_available_models as _get_copilot_models,
+)
+from components.copilot_client import (
+    get_available_models as _get_llm_models,
 )
 from components.copilot_client import (
     get_execution_logs as copilot_get_logs,
@@ -68,9 +71,6 @@ from components.data_loader import (
     get_sector_breakdown,
     get_trade_activity,
     run_dashboard_health_check,
-)
-from components.llm_analyzer import (
-    AVAILABLE_MODELS as LLM_MODELS,
 )
 from components.llm_analyzer import (
     CACHE_TTL_OPTIONS as LLM_CACHE_OPTIONS,
@@ -434,8 +434,8 @@ with _tab_settings:
             disabled=not llm_enabled,
         )
 
-        _model_ids = [m[0] for m in LLM_MODELS]
-        _model_labels = [m[1] for m in LLM_MODELS]
+        _model_ids = [m[0] for m in _get_llm_models()]
+        _model_labels = [m[1] for m in _get_llm_models()]
         _saved_model = _saved.get("llm_model", "gpt-4.1")
         _model_saved_idx = _model_ids.index(_saved_model) if _saved_model in _model_ids else 1
 
@@ -465,8 +465,8 @@ with _tab_settings:
 
         # --- Copilot チャットモデル ---
         st.markdown("---")
-        _chat_model_ids = [m[0] for m in COPILOT_MODELS]
-        _chat_model_labels = [m[1] for m in COPILOT_MODELS]
+        _chat_model_ids = [m[0] for m in _get_copilot_models()]
+        _chat_model_labels = [m[1] for m in _get_copilot_models()]
         _saved_chat_model = _saved.get("chat_model", "claude-sonnet-4")
         _chat_model_saved_idx = _chat_model_ids.index(_saved_chat_model) if _saved_chat_model in _chat_model_ids else 0
         chat_model_label = st.selectbox(
@@ -2046,8 +2046,8 @@ with _tab_copilot:
     #      history (new-session) or wipe everything at once (clear).
     _chat_col_model, _chat_col_new, _chat_col_clear = st.columns([3, 1, 1])
     with _chat_col_model:
-        _chat_model_ids = [m[0] for m in COPILOT_MODELS]
-        _chat_model_labels = [m[1] for m in COPILOT_MODELS]
+        _chat_model_ids = [m[0] for m in _get_copilot_models()]
+        _chat_model_labels = [m[1] for m in _get_copilot_models()]
         _chat_model_current_idx = _chat_model_ids.index(chat_model) if chat_model in _chat_model_ids else 0
         st.caption(f"🧠 モデル: **{_chat_model_labels[_chat_model_current_idx]}**（設定で変更可能）")
         if st.session_state.get("copilot_session_id") is not None:
