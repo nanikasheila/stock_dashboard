@@ -1454,12 +1454,16 @@ def generate_insights(
     )
 
     # --- ヘルス懸念 Top3 ---
+    _alert_severity = {"exit": 3, "caution": 2, "early_warning": 1}
     health_lines: list[str] = []
     if health_results:
-        concerns = [h for h in health_results if h.get("alert_level", 0) > 0]
-        concerns.sort(key=lambda h: h.get("alert_level", 0), reverse=True)
+        concerns = [h for h in health_results if h.get("alert_level", "ok") != "ok"]
+        concerns.sort(key=lambda h: _alert_severity.get(h.get("alert_level", ""), 0), reverse=True)
         for h in concerns[:3]:
-            health_lines.append(f"- {h.get('symbol', '')} alert_level={h.get('alert_level', 0)} {h.get('reason', '')}")
+            health_lines.append(
+                f"- {h.get('symbol', '')} alert={h.get('alert_level', '')} "
+                f"label={h.get('alert_label', '')} pnl={h.get('pnl_pct', 0):+.1f}%"
+            )
     health_summary = "\n".join(health_lines) if health_lines else "（特になし）"
 
     # --- アラート Top3 ---
