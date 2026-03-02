@@ -462,3 +462,83 @@ class TestBuildCorrelationChart:
         fig = charts.build_correlation_chart(corr)
         assert len(fig.data) == 1
         assert isinstance(fig.data[0], go.Heatmap)
+
+
+# ---------------------------------------------------------------------------
+# TestAttributionChart
+# ---------------------------------------------------------------------------
+
+
+class TestAttributionChart:
+    """build_attribution_chart() のテスト."""
+
+    @staticmethod
+    def _make_attribution() -> dict:
+        """テスト用 attribution dict を生成するヘルパー."""
+        return {
+            "by_stock": [
+                {
+                    "symbol": "AAPL",
+                    "sector": "Technology",
+                    "pnl_jpy": 50_000,
+                    "cost_jpy": 200_000,
+                    "contribution_pct": 5.0,
+                    "weight_pct": 25.0,
+                },
+                {
+                    "symbol": "MSFT",
+                    "sector": "Technology",
+                    "pnl_jpy": 30_000,
+                    "cost_jpy": 500_000,
+                    "contribution_pct": 3.0,
+                    "weight_pct": 50.0,
+                },
+                {
+                    "symbol": "7203.T",
+                    "sector": "自動車",
+                    "pnl_jpy": -10_000,
+                    "cost_jpy": 300_000,
+                    "contribution_pct": -1.0,
+                    "weight_pct": 25.0,
+                },
+            ],
+            "by_sector": {
+                "Technology": {"pnl_jpy": 80_000, "contribution_pct": 8.0},
+                "自動車": {"pnl_jpy": -10_000, "contribution_pct": -1.0},
+            },
+            "total_cost_jpy": 1_000_000,
+            "total_pnl_jpy": 70_000,
+            "total_pnl_pct": 7.0,
+        }
+
+    def test_returns_figure_by_stock(self):
+        """by='stock' で go.Figure を返す."""
+        attr = self._make_attribution()
+        fig = charts.build_attribution_chart(attr, by="stock")
+        assert isinstance(fig, go.Figure)
+
+    def test_returns_figure_by_sector(self):
+        """by='sector' で go.Figure を返す."""
+        attr = self._make_attribution()
+        fig = charts.build_attribution_chart(attr, by="sector")
+        assert isinstance(fig, go.Figure)
+
+    def test_stock_chart_has_one_trace(self):
+        """銘柄別チャートは 1 トレース（Bar）を持つ."""
+        attr = self._make_attribution()
+        fig = charts.build_attribution_chart(attr, by="stock")
+        assert len(fig.data) == 1
+        assert isinstance(fig.data[0], go.Bar)
+
+    def test_sector_chart_title(self):
+        """セクター別チャートのタイトルが正しい."""
+        attr = self._make_attribution()
+        fig = charts.build_attribution_chart(attr, by="sector")
+        assert "セクター別" in fig.layout.title.text
+
+    def test_dark_theme_applied(self):
+        """ダークテーマの背景色が設定されている."""
+        attr = self._make_attribution()
+        fig = charts.build_attribution_chart(attr, by="stock")
+        assert fig.layout.paper_bgcolor == "#0e1117"
+        assert fig.layout.plot_bgcolor == "#0e1117"

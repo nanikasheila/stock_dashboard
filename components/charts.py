@@ -6,6 +6,8 @@ st.plotly_chart() の呼び出しは app.py 側で行う。
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -680,5 +682,62 @@ def build_correlation_chart(corr_matrix: pd.DataFrame) -> go.Figure | None:
         xaxis=dict(side="bottom"),
         yaxis=dict(autorange="reversed"),
         margin=dict(t=40, l=10, r=10, b=10),
+    )
+    return fig
+
+
+# =====================================================================
+# パフォーマンス寄与チャート
+# =====================================================================
+
+
+def build_attribution_chart(
+    attribution: dict[str, Any],
+    by: str = "stock",
+) -> go.Figure:
+    """Build horizontal bar chart showing performance attribution.
+
+    Why: Visualising each stock's or sector's contribution to portfolio
+         return helps users quickly identify the largest positive/negative
+         drivers of performance.
+    How: Extract items from *attribution* (keyed by *by*), sort by
+         contribution descending, and render as a horizontal bar chart
+         with green/red colouring based on sign.
+    """
+    if by == "sector":
+        sector_data = attribution.get("by_sector", {})
+        items = [
+            {"label": sector, "contribution_pct": vals["contribution_pct"]} for sector, vals in sector_data.items()
+        ]
+        title = "セクター別パフォーマンス寄与"
+    else:
+        stock_data = attribution.get("by_stock", [])
+        items = [{"label": s["symbol"], "contribution_pct": s["contribution_pct"]} for s in stock_data]
+        title = "銘柄別パフォーマンス寄与"
+
+    items.sort(key=lambda x: x["contribution_pct"], reverse=True)
+
+    labels = [item["label"] for item in items]
+    values = [item["contribution_pct"] for item in items]
+    colors = ["#4ade80" if v >= 0 else "#f87171" for v in values]
+
+    fig = go.Figure(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker_color=colors,
+            hovertemplate="%{y}: %{x:+.2f}%<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=title,
+        xaxis_title="寄与度（%）",
+        xaxis=dict(ticksuffix="%"),
+        yaxis=dict(autorange="reversed"),
+        height=max(300, len(items) * 35 + 100),
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        font=dict(color="white"),
     )
     return fig
