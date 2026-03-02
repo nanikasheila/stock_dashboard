@@ -24,6 +24,7 @@ from components.data_loader import (
     _shorten_company_name,
     compute_benchmark_excess,
     compute_daily_change,
+    compute_performance_attribution,
     compute_top_worst_performers,
     get_monthly_summary,
     get_sector_breakdown,
@@ -1619,3 +1620,108 @@ class TestBuildSymbolLabels:
             result = _build_symbol_labels(["4063.T"])
             # 株式会社除去 → "信越化学工業" (6文字, max_len=8以下)
             assert result == {"4063.T": "信越化学工業(4063.T)"}
+
+
+# ---------------------------------------------------------------------------
+# TestPerformanceAttribution
+# ---------------------------------------------------------------------------
+
+
+class TestPerformanceAttribution:
+    """compute_performance_attribution() のテスト."""
+
+    @staticmethod
+    def _make_snapshot(positions: list[dict] | None = None) -> dict:
+        """テスト用スナップショットを生成するヘルパー."""
+        if positions is None:
+            positions = [
+                {
+                    "symbol": "AAPL",
+                    "sector": "Technology",
+                    "pnl_jpy": 50_000.0,
+                    "cost_jpy": 200_000.0,
+                    "evaluation_jpy": 250_000.0,
+                },
+                {
+                    "symbol": "7203.T",
+                    "sector": "自動車",
+                    "pnl_jpy": -10_000.0,
+                    "cost_jpy": 300_000.0,
+                    "evaluation_jpy": 290_000.0,
+                },
+                {
+                    "symbol": "MSFT",
+                    "sector": "Technology",
+                    "pnl_jpy": 30_000.0,
+                    "cost_jpy": 500_000.0,
+                    "evaluation_jpy": 530_000.0,
+                },
+            ]
+        total_value = sum(p["evaluation_jpy"] for p in positions)
+        return {"positions": positions, "total_value_jpy": total_value}
+
+    def test_by_stock_has_three_items(self):
+        """3 銘柄のスナップショットで by_stock が 3 要素."""
+        result = compute_performance_attribution(self._make_snapshot())
+        assert len(result["by_stock"]) == 3
+
+    def test_by_stock_sorted_by_contribution_desc(self):
+        """by_stock が contribution_pct の降順でソートされている."""
+        result = compute_performance_attribution(self._make_snapshot())
+        contributions = [s["contribution_pct"] for s in result["by_stock"]]
+        assert contributions == sorted(contributions, reverse=True)
+
+    def test_by_sector_aggregates_correctly(self):
+        """同じセクターの pnl_jpy が合算される."""
+        result = compute_performance_attribution(self._make_snapshot())
+        tech = result["by_sector"]["Technology"]
+        # AAPL 50000 + MSFT 30000 = 80000
+        assert tech["pnl_jpy"] == 80_000.0
+
+    def test_cash_positions_excluded(self):
+        """キャッシュポジション（JPY.CASH）が除外される."""
+        positions = [
+            {
+                "symbol": "AAPL",
+                "sector": "Technology",
+                "pnl_jpy": 50_000.0,
+                "cost_jpy": 200_000.0,
+                "evaluation_jpy": 250_000.0,
+            },
+            {
+                "symbol": "JPY.CASH",
+                "sector": "Cash",
+                "pnl_jpy": 0.0,
+                "cost_jpy": 1_000_000.0,
+                "evaluation_jpy": 1_000_000.0,
+            },
+        ]
+        snapshot = self._make_snapshot(positions)
+        result = compute_performance_attribution(snapshot)
+        symbols = [s["symbol"] for s in result["by_stock"]]
+        assert "JPY.CASH" not in symbols
+        assert len(result["by_stock"]) == 1
+
+    def test_empty_positions_returns_zeros(self):
+        """positions が空のとき全てゼロを返す."""
+        snapshot = {"positions": [], "total_value_jpy": 0.0}
+        result = compute_performance_attribution(snapshot)
+        assert result["total_cost_jpy"] == 0.0
+        assert result["total_pnl_jpy"] == 0.0
+        assert result["total_pnl_pct"] == 0.0
+        assert result["by_stock"] == []
+        assert result["by_sector"] == {}
+
+    def test_total_pnl_pct_calculation(self):
+        """total_pnl_pct = total_pnl_jpy / total_cost_jpy * 100."""
+        result = compute_performance_attribution(self._make_snapshot())
+        # total_cost = 200000+300000+500000 = 1000000
+        # total_pnl = 50000+(-10000)+30000 = 70000
+        expected_pct = 70_000.0 / 1_000_000.0 * 100
+        assert abs(result["total_pnl_pct"] - expected_pct) < 0.001
+
+    def test_contribution_pct_sums_to_total_pnl_pct(self):
+        """全銘柄の contribution_pct 合計が total_pnl_pct に等しい."""
+        result = compute_performance_attribution(self._make_snapshot())
+        sum_contrib = sum(s["contribution_pct"] for s in result["by_stock"])
+        assert abs(sum_contrib - result["total_pnl_pct"]) < 0.001

@@ -30,6 +30,15 @@ DEFAULTS: dict[str, Any] = {
     "llm_cache_ttl_label": "1時間",
     # Copilot チャット設定
     "chat_model": "claude-sonnet-4",
+    # AI インサイト設定
+    "insights_enabled": True,
+    # 取引影響プレビュー設定
+    "trade_preview_enabled": True,
+    "trade_preview_llm": True,
+    # ウォッチリスト設定
+    "watchlist_llm_enabled": True,
+    # パフォーマンス寄与分析設定
+    "attribution_llm_enabled": True,
 }
 
 

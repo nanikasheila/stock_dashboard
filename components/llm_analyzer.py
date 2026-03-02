@@ -1373,3 +1373,234 @@ def apply_news_analysis(
     )
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Insights キャッシュ
+# ---------------------------------------------------------------------------
+_insights_cache: dict[str, Any] = {"hash": None, "results": None, "timestamp": 0.0}
+
+
+def clear_insights_cache() -> None:
+    """インサイトキャッシュを強制クリアする."""
+    _insights_cache["hash"] = None
+    _insights_cache["results"] = None
+    _insights_cache["timestamp"] = 0.0
+
+
+def _compute_insights_hash(
+    snapshot: dict[str, Any],
+    structure: dict[str, Any],
+) -> str:
+    """snapshot と structure から決定的ハッシュを生成する."""
+    raw = json.dumps(
+        {
+            "total_value_jpy": snapshot.get("total_value_jpy"),
+            "total_pnl_pct": snapshot.get("total_pnl_pct"),
+            "sector_hhi": structure.get("sector_hhi"),
+            "risk_level": structure.get("risk_level"),
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def generate_insights(
+    snapshot: dict[str, Any],
+    structure: dict[str, Any],
+    health_results: list[dict[str, Any]] | None = None,
+    sell_alerts: list[dict[str, Any]] | None = None,
+    *,
+    model: str | None = None,
+    timeout: int = 60,
+    cache_ttl: int = DEFAULT_CACHE_TTL_SEC,
+) -> list[str] | None:
+    """ポートフォリオデータから AI インサイトを生成する.
+
+    Why: ダッシュボードの AI Insights パネルに表示する、投資家向けの
+         アクション可能なインサイトを LLM で自動生成する。
+    How: snapshot / structure / health / alerts を要約しプロンプトに組み込み、
+         Copilot CLI で 3〜5 個のインサイトを JSON 配列として取得する。
+         ハッシュベースのキャッシュで Premium Request を節約する。
+    """
+    if not is_available():
+        logger.warning("generate_insights: copilot CLI is not available")
+        return None
+
+    current_hash = _compute_insights_hash(snapshot, structure)
+    now = time.time()
+    if (
+        _insights_cache["hash"] == current_hash
+        and _insights_cache["results"] is not None
+        and (now - _insights_cache["timestamp"]) < cache_ttl
+    ):
+        return _insights_cache["results"]
+
+    # --- ポートフォリオ概要 ---
+    positions = snapshot.get("positions", [])
+    portfolio_summary = (
+        f"総資産: {snapshot.get('total_value_jpy', 0):,.0f}円 / "
+        f"損益率: {snapshot.get('total_pnl_pct', 0):+.1f}% / "
+        f"銘柄数: {len(positions)}"
+    )
+
+    # --- 構造分析 ---
+    sector_bd = structure.get("sector_breakdown", {})
+    currency_bd = structure.get("currency_breakdown", {})
+    structure_summary = (
+        f"セクター: {sector_bd} / 通貨: {currency_bd} / "
+        f"リスク: {structure.get('risk_level', '不明')} / "
+        f"HHI: {structure.get('sector_hhi', 0):.2f}"
+    )
+
+    # --- ヘルス懸念 Top3 ---
+    health_lines: list[str] = []
+    if health_results:
+        concerns = [h for h in health_results if h.get("alert_level", 0) > 0]
+        concerns.sort(key=lambda h: h.get("alert_level", 0), reverse=True)
+        for h in concerns[:3]:
+            health_lines.append(f"- {h.get('symbol', '')} alert_level={h.get('alert_level', 0)} {h.get('reason', '')}")
+    health_summary = "\n".join(health_lines) if health_lines else "（特になし）"
+
+    # --- アラート Top3 ---
+    alert_lines: list[str] = []
+    if sell_alerts:
+        for a in sell_alerts[:3]:
+            alert_lines.append(f"- {a.get('symbol', '')} {a.get('urgency', '')} {a.get('reason', '')}")
+    alerts_summary = "\n".join(alert_lines) if alert_lines else "（特になし）"
+
+    prompt = f"""あなたはポートフォリオアドバイザーです。以下のポートフォリオデータに基づき、
+投資家が今すぐ注目すべき3〜5個のインサイトをJSON配列で返してください。
+
+各インサイトは以下の条件を満たすこと:
+- 先頭に絵文字（🔴重大/🟡注意/🟢ポジティブ/💱通貨/📊データ）
+- 1文で簡潔に、具体的な数値を含む
+- アクション可能な内容（「〜を検討」「〜に注意」等）
+
+ポートフォリオ概要:
+{portfolio_summary}
+
+構造分析:
+{structure_summary}
+
+ヘルス懸念:
+{health_summary}
+
+アラート:
+{alerts_summary}
+
+JSON配列のみを返してください。"""
+
+    use_model = model or DEFAULT_MODEL
+    raw = copilot_call(prompt, model=use_model, timeout=timeout)
+    if raw is None:
+        logger.warning("generate_insights: copilot_call returned None")
+        return None
+
+    # JSON 配列のパース
+    json_text = _extract_json_text(raw)
+    if json_text is None:
+        logger.warning("generate_insights: failed to extract JSON from response")
+        return None
+
+    try:
+        parsed = json.loads(json_text)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("generate_insights: JSON decode failed")
+        return None
+
+    if not isinstance(parsed, list) or not all(isinstance(s, str) for s in parsed):
+        logger.warning("generate_insights: response is not a list of strings")
+        return None
+
+    _insights_cache["hash"] = current_hash
+    _insights_cache["results"] = parsed
+    _insights_cache["timestamp"] = time.time()
+
+    return parsed
+
+
+def generate_attribution_summary(
+    attribution: dict[str, Any],
+    *,
+    model: str | None = None,
+    timeout: int = 60,
+) -> str | None:
+    """パフォーマンス寄与分析データから LLM 要因分析サマリーを生成する.
+
+    Why: compute_performance_attribution() の数値結果を自然言語で要約し、
+         投資家がリターンの要因を直感的に把握できるようにする。
+    How: 上位/下位寄与銘柄とセクター情報をプロンプトに組み込み、
+         Copilot CLI で 3〜5 文の日本語分析を取得する。
+         オンデマンド呼び出し専用のためキャッシュは設けない。
+    """
+    if not is_available():
+        logger.warning("generate_attribution_summary: copilot CLI is not available")
+        return None
+
+    total_pnl_pct = attribution.get("total_pnl_pct", 0.0)
+    stocks = attribution.get("stocks", [])
+
+    # 寄与率でソート
+    sorted_stocks = sorted(
+        stocks,
+        key=lambda s: s.get("contribution_pct", 0),
+        reverse=True,
+    )
+    top_contributors = sorted_stocks[:3]
+    bottom_detractors = sorted(
+        stocks,
+        key=lambda s: s.get("contribution_pct", 0),
+    )[:3]
+
+    def _format_stock_list(stock_list: list[dict[str, Any]]) -> str:
+        """銘柄リストをテキストに変換する."""
+        lines: list[str] = []
+        for s in stock_list:
+            lines.append(
+                f"- {s.get('name', s.get('symbol', '?'))}: "
+                f"寄与 {s.get('contribution_pct', 0):+.2f}% "
+                f"(損益 {s.get('pnl_pct', 0):+.1f}%)"
+            )
+        return "\n".join(lines) if lines else "（なし）"
+
+    # セクター集計
+    sector_map: dict[str, float] = {}
+    for s in stocks:
+        sec = s.get("sector", "その他")
+        sector_map[sec] = sector_map.get(sec, 0.0) + s.get("contribution_pct", 0.0)
+    sector_lines = [
+        f"- {k}: {v:+.2f}%"
+        for k, v in sorted(
+            sector_map.items(),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+    ]
+    sector_summary = "\n".join(sector_lines) if sector_lines else "（なし）"
+
+    prompt = f"""以下のポートフォリオのパフォーマンス寄与分析データに基づき、
+3〜5文で要因分析を日本語で返してください。
+
+総損益率: {total_pnl_pct:.1f}%
+
+上位寄与銘柄:
+{_format_stock_list(top_contributors)}
+
+下位寄与銘柄:
+{_format_stock_list(bottom_detractors)}
+
+セクター別:
+{sector_summary}"""
+
+    use_model = model or DEFAULT_MODEL
+    raw = copilot_call(prompt, model=use_model, timeout=timeout)
+    if raw is None:
+        logger.warning("generate_attribution_summary: copilot_call returned None")
+        return None
+
+    result = raw.strip()
+    if not result:
+        return None
+
+    return result
