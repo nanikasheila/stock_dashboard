@@ -532,6 +532,138 @@ def compute_weight_drift(
 
 
 # ---------------------------------------------------------------------------
+# Long-horizon analytics helpers
+# ---------------------------------------------------------------------------
+
+
+def compute_monthly_seasonality(history_df: pd.DataFrame) -> dict:
+    """Derive month-of-year / year return patterns from portfolio history.
+
+    月次リターンを暦月ごとに集計し、季節性パターンと年次リターンを返す。
+
+    Parameters
+    ----------
+    history_df : pd.DataFrame
+        build_portfolio_history() の出力。"total" 列が必須。
+
+    Returns
+    -------
+    dict
+        has_sufficient_data: bool    True if >= 12 monthly-return observations
+        months_of_data: int          月次リターンの観測数
+        monthly_avg_returns: dict[int, float]  月番号(1-12) -> 平均月次リターン(%)
+        year_returns: dict[int, float]         年 -> 年間リターン(%, compounded from monthly)
+    """
+    _empty: dict = {
+        "has_sufficient_data": False,
+        "months_of_data": 0,
+        "monthly_avg_returns": {},
+        "year_returns": {},
+    }
+
+    if history_df.empty or "total" not in history_df.columns:
+        return _empty
+
+    total = history_df["total"].dropna()
+    if len(total) < 2:
+        return _empty
+
+    # Resample to month-end: one representative value per calendar month
+    monthly_end = total.resample("ME").last().dropna()
+    monthly_returns = monthly_end.pct_change().dropna() * 100  # percent
+
+    months_of_data = len(monthly_returns)
+    has_sufficient_data = months_of_data >= 12
+
+    # Month-of-year averages: pool all observations for each month number (1-12)
+    monthly_avg_returns: dict[int, float] = {}
+    for month in range(1, 13):
+        mask = monthly_returns.index.month == month
+        if mask.any():
+            monthly_avg_returns[month] = round(float(monthly_returns[mask].mean()), 2)
+
+    # Year returns: compound the monthly returns within each calendar year
+    # Why: avoids the partial-first-year problem of year-end pct_change
+    year_returns: dict[int, float] = {}
+    for year_val, group in monthly_returns.groupby(monthly_returns.index.year):
+        compounded = float(((1 + group / 100).prod() - 1) * 100)
+        year_returns[int(year_val)] = round(compounded, 1)
+
+    return {
+        "has_sufficient_data": has_sufficient_data,
+        "months_of_data": months_of_data,
+        "monthly_avg_returns": monthly_avg_returns,
+        "year_returns": year_returns,
+    }
+
+
+def compute_rolling_sharpe_trend(
+    history_df: pd.DataFrame,
+    window: int = 60,
+    trend_points: int = 30,
+) -> dict:
+    """Summarize the rolling Sharpe ratio trend as a portfolio stability signal.
+
+    直近の ``window`` 日間ローリングSharpe比と、その ``trend_points`` 日前の値を
+    比較して「改善 / 安定 / 悪化」のシグナルを返す。
+
+    Parameters
+    ----------
+    history_df : pd.DataFrame
+        build_portfolio_history() の出力。"total" 列が必須。
+    window : int
+        ローリングSharpeの計算ウィンドウ（営業日数）。デフォルト 60 日。
+    trend_points : int
+        何日前のローリングSharpeと比較するか。デフォルト 30 日。
+
+    Returns
+    -------
+    dict
+        trend: "improving" | "stable" | "declining" | "insufficient"
+        trend_ja: str
+        latest: float | None
+        prev: float | None
+        delta: float | None
+        description: str
+    """
+    _insufficient: dict = {
+        "trend": "insufficient",
+        "trend_ja": "データ不足",
+        "latest": None,
+        "prev": None,
+        "delta": None,
+        "description": f"ローリングSharpe比（{window}日間）: データ不足",
+    }
+
+    rs = compute_rolling_sharpe(history_df, window=window)
+    if rs.empty or len(rs) < trend_points + 1:
+        return _insufficient
+
+    latest = float(rs.iloc[-1])
+    prev = float(rs.iloc[-(trend_points + 1)])
+    delta = latest - prev
+
+    if delta > 0.2:
+        trend = "improving"
+        trend_ja = "改善傾向"
+    elif delta < -0.2:
+        trend = "declining"
+        trend_ja = "悪化傾向"
+    else:
+        trend = "stable"
+        trend_ja = "安定"
+
+    return {
+        "trend": trend,
+        "trend_ja": trend_ja,
+        "latest": round(latest, 2),
+        "prev": round(prev, 2),
+        "delta": round(delta, 2),
+        "description": f"直近 {window} 日間のローリングSharpe比: {latest:.2f}（{trend_ja}）",
+    }
+
+
+# ---------------------------------------------------------------------------
 # パフォーマンス帰属
 # ---------------------------------------------------------------------------
 
