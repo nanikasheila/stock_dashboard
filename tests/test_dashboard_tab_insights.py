@@ -46,6 +46,7 @@ with patch.dict("sys.modules", {"streamlit": _st_mock}):
 
 from src.core.behavior.models import (
     BehaviorInsight,
+    BiasSignal,
     ConfidenceLevel,
     HoldingPeriodSummary,
     PortfolioTimingInsight,
@@ -496,4 +497,382 @@ class TestLongHorizonSection:
                 total_value=100_000.0,
                 realized_pnl=60_000.0,
                 unrealized_pnl=40_000.0,
+            )
+
+
+# ---------------------------------------------------------------------------
+# _build_retro_payload — 純粋関数テスト（Streamlit 不要）
+# ---------------------------------------------------------------------------
+
+
+class TestBuildRetroPayload:
+    """_build_retro_payload の境界値テスト."""
+
+    def test_empty_behavior_returns_zero_trades(self) -> None:
+        """空の BehaviorInsight で総取引数が 0 になること."""
+        payload = tab_insights._build_retro_payload(
+            behavior=BehaviorInsight.empty(),
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            positions=[],
+            realized_pnl=0.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+        assert payload["total_buy"] == 0
+        assert payload["total_sell"] == 0
+        assert payload["win_rate"] is None
+        assert payload["profit_factor"] is None
+        assert payload["avg_buy_timing"] is None
+        assert payload["adi_score"] is None
+        assert payload["bias_signals"] == []
+
+    def test_full_data_payload(self) -> None:
+        """データ有りで主要フィールドが正しく設定されること."""
+        from src.core.behavior.models import StyleProfile
+
+        behavior = _make_behavior_insight_with_data()
+        timing = _make_timing_insight_with_data()
+        profile = StyleProfile(
+            adi_score=65.0,
+            label="aggressive",
+            confidence=ConfidenceLevel.MEDIUM,
+        )
+        biases = [
+            BiasSignal(
+                bias_type="concentration",
+                severity="high",
+                title="集中リスク",
+                description="テスト",
+            )
+        ]
+        payload = tab_insights._build_retro_payload(
+            behavior=behavior,
+            timing=timing,
+            style_profile=profile,
+            style_biases=biases,
+            positions=_make_positions(),
+            realized_pnl=50_000.0,
+            unrealized_pnl=20_000.0,
+            total_value=500_000.0,
+        )
+        assert payload["total_buy"] == 10
+        assert payload["total_sell"] == 5
+        assert payload["win_rate"] == 60.0
+        assert payload["profit_factor"] == 6.0
+        assert payload["avg_buy_timing"] == 72.5
+        assert payload["adi_score"] == 65.0
+        assert payload["adi_label"] == "aggressive"
+        assert payload["bias_signals"] == ["集中リスク"]
+        assert payload["realized_pnl_jpy"] == 50_000
+        assert payload["positions_held"] == 2
+
+    def test_negative_pnl_encoded_correctly(self) -> None:
+        """損失ケースで符号付き整数が正しく格納されること."""
+        payload = tab_insights._build_retro_payload(
+            behavior=BehaviorInsight.empty(),
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            positions=[],
+            realized_pnl=-30_000.0,
+            unrealized_pnl=-10_000.0,
+            total_value=200_000.0,
+        )
+        assert payload["realized_pnl_jpy"] == -30_000
+        assert payload["unrealized_pnl_jpy"] == -10_000
+
+
+# ---------------------------------------------------------------------------
+# _build_retro_prompt — 純粋関数テスト（Streamlit 不要）
+# ---------------------------------------------------------------------------
+
+
+class TestBuildRetroPrompt:
+    """_build_retro_prompt の出力検証テスト."""
+
+    def _minimal_payload(self) -> dict:
+        return tab_insights._build_retro_payload(
+            behavior=BehaviorInsight.empty(),
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            positions=[],
+            realized_pnl=0.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+
+    def test_prompt_is_non_empty_string(self) -> None:
+        """プロンプトが空でない文字列であること."""
+        prompt = tab_insights._build_retro_prompt(self._minimal_payload())
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0
+
+    def test_prompt_contains_required_sections(self) -> None:
+        """プロンプトに必須セクションが含まれること."""
+        prompt = tab_insights._build_retro_prompt(self._minimal_payload())
+        assert "投資行動サマリー" in prompt
+        assert "良かった点" in prompt
+        assert "改善点" in prompt
+        assert "次のアクション" in prompt
+
+    def test_prompt_with_data_includes_win_rate(self) -> None:
+        """勝率データがあるときプロンプトに含まれること."""
+        behavior = _make_behavior_insight_with_data()
+        payload = tab_insights._build_retro_payload(
+            behavior=behavior,
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            positions=[],
+            realized_pnl=0.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+        prompt = tab_insights._build_retro_prompt(payload)
+        assert "勝率" in prompt
+        assert "60.0%" in prompt
+
+    def test_prompt_does_not_contain_symbol_codes(self) -> None:
+        """プロンプトに銘柄コードが含まれないこと（プライバシー保護）."""
+        behavior = _make_behavior_insight_with_data()
+        payload = tab_insights._build_retro_payload(
+            behavior=behavior,
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            positions=_make_positions(),
+            realized_pnl=0.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+        prompt = tab_insights._build_retro_prompt(payload)
+        # 銘柄コードが直接含まれないこと
+        assert "VTI" not in prompt
+        assert "7203.T" not in prompt
+
+    def test_positive_pnl_shows_plus_sign(self) -> None:
+        """利益ケースで符号付きフォーマットが使われること."""
+        payload = tab_insights._build_retro_payload(
+            behavior=BehaviorInsight.empty(),
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            positions=[],
+            realized_pnl=50_000.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+        prompt = tab_insights._build_retro_prompt(payload)
+        assert "+50,000円" in prompt
+
+    def test_negative_pnl_shows_minus_sign(self) -> None:
+        """損失ケースで負号が正しく表示されること."""
+        payload = tab_insights._build_retro_payload(
+            behavior=BehaviorInsight.empty(),
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            positions=[],
+            realized_pnl=-20_000.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+        prompt = tab_insights._build_retro_prompt(payload)
+        assert "-20,000円" in prompt
+
+
+# ---------------------------------------------------------------------------
+# _render_retrospective_section — Streamlit UI テスト
+# ---------------------------------------------------------------------------
+
+
+class TestRenderRetrospectiveSection:
+    """_render_retrospective_section の描画テスト."""
+
+    def _call_section(self, **kwargs) -> None:
+        defaults = dict(
+            behavior=BehaviorInsight.empty(),
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            positions=[],
+            realized_pnl=0.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+        defaults.update(kwargs)
+        with patch.dict("sys.modules", {"streamlit": _st_mock}):
+            tab_insights._render_retrospective_section(**defaults)
+
+    def test_renders_no_trades_info_message(self) -> None:
+        """トレードがないとき info メッセージが表示されること."""
+        self._call_section()
+        _st_mock.info.assert_called()
+
+    def test_renders_with_trade_data(self) -> None:
+        """トレードデータあり・Copilot 未設定で例外なく描画できること."""
+        self._call_section(
+            behavior=_make_behavior_insight_with_data(),
+            timing=_make_timing_insight_with_data(),
+            positions=_make_positions(),
+            realized_pnl=50_000.0,
+            unrealized_pnl=20_000.0,
+            total_value=500_000.0,
+        )
+
+    def test_run_button_copilot_unavailable_sets_error(self) -> None:
+        """Copilot が利用できないとき RETRO_ERROR がセットされること."""
+        session: dict = {}
+
+        mock_st = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock(return_value=mock_st)
+        mock_st.expander.return_value.__exit__ = MagicMock(return_value=False)
+        mock_st.columns.side_effect = _mock_columns
+        # run ボタンが押されたように見せる（ラベルに「実行」が含まれる）
+        mock_st.button.side_effect = lambda label, **kw: "実行" in label
+        mock_st.session_state = session
+
+        mock_copilot = MagicMock()
+        mock_copilot.is_available.return_value = False
+
+        with (
+            patch.object(tab_insights, "st", mock_st),
+            patch.dict("sys.modules", {"components.copilot_client": mock_copilot}),
+        ):
+            tab_insights._render_retrospective_section(
+                behavior=_make_behavior_insight_with_data(),
+                timing=PortfolioTimingInsight.empty(),
+                style_profile=None,
+                style_biases=None,
+                positions=_make_positions(),
+                realized_pnl=0.0,
+                unrealized_pnl=0.0,
+                total_value=0.0,
+            )
+
+        assert session.get(tab_insights.SK.RETRO_ERROR) is not None
+        assert session.get(tab_insights.SK.RETRO_RESULT) is None
+
+    def test_run_button_copilot_returns_result(self) -> None:
+        """Copilot が応答を返したとき RETRO_RESULT がセットされること."""
+        session: dict = {}
+
+        mock_st = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock(return_value=mock_st)
+        mock_st.expander.return_value.__exit__ = MagicMock(return_value=False)
+        mock_st.columns.side_effect = _mock_columns
+        mock_st.button.side_effect = lambda label, **kw: "実行" in label
+        mock_st.session_state = session
+        mock_st.spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_st.spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_copilot = MagicMock()
+        mock_copilot.is_available.return_value = True
+        mock_copilot.call.return_value = "テスト振り返りレポート"
+
+        with (
+            patch.object(tab_insights, "st", mock_st),
+            patch.dict("sys.modules", {"components.copilot_client": mock_copilot}),
+        ):
+            tab_insights._render_retrospective_section(
+                behavior=_make_behavior_insight_with_data(),
+                timing=PortfolioTimingInsight.empty(),
+                style_profile=None,
+                style_biases=None,
+                positions=_make_positions(),
+                realized_pnl=0.0,
+                unrealized_pnl=0.0,
+                total_value=0.0,
+            )
+
+        assert session.get(tab_insights.SK.RETRO_RESULT) == "テスト振り返りレポート"
+        assert session.get(tab_insights.SK.RETRO_ERROR) is None
+
+    def test_run_button_copilot_returns_none_sets_error(self) -> None:
+        """Copilot が None を返したとき RETRO_ERROR がセットされること."""
+        session: dict = {}
+
+        mock_st = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock(return_value=mock_st)
+        mock_st.expander.return_value.__exit__ = MagicMock(return_value=False)
+        mock_st.columns.side_effect = _mock_columns
+        mock_st.button.side_effect = lambda label, **kw: "実行" in label
+        mock_st.session_state = session
+        mock_st.spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_st.spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_copilot = MagicMock()
+        mock_copilot.is_available.return_value = True
+        mock_copilot.call.return_value = None
+
+        with (
+            patch.object(tab_insights, "st", mock_st),
+            patch.dict("sys.modules", {"components.copilot_client": mock_copilot}),
+        ):
+            tab_insights._render_retrospective_section(
+                behavior=_make_behavior_insight_with_data(),
+                timing=PortfolioTimingInsight.empty(),
+                style_profile=None,
+                style_biases=None,
+                positions=_make_positions(),
+                realized_pnl=0.0,
+                unrealized_pnl=0.0,
+                total_value=0.0,
+            )
+
+        assert session.get(tab_insights.SK.RETRO_ERROR) is not None
+        assert session.get(tab_insights.SK.RETRO_RESULT) is None
+
+    def test_existing_result_displayed(self) -> None:
+        """既存の RETRO_RESULT がある場合に markdown で表示されること."""
+        session: dict = {
+            tab_insights.SK.RETRO_RESULT: "既存のレポートテキスト",
+            tab_insights.SK.RETRO_ERROR: None,
+        }
+
+        mock_st = MagicMock()
+        mock_st.expander.return_value.__enter__ = MagicMock(return_value=mock_st)
+        mock_st.expander.return_value.__exit__ = MagicMock(return_value=False)
+        mock_st.columns.side_effect = _mock_columns
+        mock_st.button.return_value = False  # ボタン未押下
+        mock_st.session_state = session
+
+        with patch.object(tab_insights, "st", mock_st):
+            tab_insights._render_retrospective_section(
+                behavior=_make_behavior_insight_with_data(),
+                timing=PortfolioTimingInsight.empty(),
+                style_profile=None,
+                style_biases=None,
+                positions=_make_positions(),
+                realized_pnl=0.0,
+                unrealized_pnl=0.0,
+                total_value=0.0,
+            )
+
+        # st.markdown が既存レポートテキストで呼ばれたことを確認
+        markdown_calls = [str(c) for c in mock_st.markdown.call_args_list]
+        assert any("既存のレポートテキスト" in c for c in markdown_calls)
+
+
+# ---------------------------------------------------------------------------
+# render_insights_tab に retrospective セクションが含まれること
+# ---------------------------------------------------------------------------
+
+
+class TestRenderInsightsTabWithRetrospective:
+    """render_insights_tab がレトロスペクティブセクションを呼び出すことを確認する."""
+
+    def test_renders_including_retrospective_section(self) -> None:
+        """render_insights_tab で例外なく retrospective セクションが描画されること."""
+        with patch.dict("sys.modules", {"streamlit": _st_mock}):
+            tab_insights.render_insights_tab(
+                positions=_make_positions(),
+                total_value=500_000.0,
+                unrealized_pnl=50_000.0,
+                realized_pnl=20_000.0,
+                behavior_insight=_make_behavior_insight_with_data(),
+                timing_insight=_make_timing_insight_with_data(),
             )

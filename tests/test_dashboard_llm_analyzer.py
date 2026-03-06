@@ -53,12 +53,16 @@ from components.llm_analyzer import (
 
 class TestIsAvailable:
     def test_available_when_copilot_found_by_which(self):
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"):
+        with (
+            patch("components.copilot_client._SDK_AVAILABLE", True),
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+        ):
             assert is_available() is True
 
     def test_available_when_copilot_found_by_subprocess(self):
         """shutil.which が見つけられなくても subprocess で検出できる."""
         with (
+            patch("components.copilot_client._SDK_AVAILABLE", True),
             patch("components.copilot_client.shutil.which", return_value=None),
             patch("components.copilot_client.subprocess.run") as mock_run,
         ):
@@ -306,7 +310,7 @@ class TestAnalyzeNewsBatch:
             assert result is None
 
     def test_returns_empty_for_no_news(self):
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"):
+        with patch("components.llm_analyzer.is_available", return_value=True):
             result = analyze_news_batch([], [])
             assert result == []
 
