@@ -14,6 +14,7 @@ app.py やテストは従来通り ``from components.data_loader import <name>``
     dl_analytics.py — 分析・リスク指標
     dl_health.py    — 売りアラート純粋ヘルパー
     dl_news.py      — 経済ニュース純粋ヘルパー
+    dl_behavior.py  — 蓄積データ行動インサイト統合レイヤー（src.core.behavior ブリッジ）
 
 このモジュールに直接定義される関数:
     価格キャッシュ全体 — tests が components.data_loader._PRICE_CACHE_DIR 等をパッチするため
@@ -599,12 +600,22 @@ from components.dl_analytics import (
     compute_correlation_matrix,
     compute_daily_change,
     compute_drawdown_series,
+    compute_monthly_seasonality,
     compute_performance_attribution,
     compute_risk_metrics,
     compute_rolling_sharpe,
+    compute_rolling_sharpe_trend,
     compute_top_worst_performers,
     compute_weight_drift,
     get_benchmark_series,
+)
+from components.dl_behavior import (
+    BehaviorInsight,
+    ConfidenceLevel,
+    PortfolioTradeStats,
+    StyleMetrics,
+    TradeStats,
+    load_behavior_insight,
 )
 
 # ---------------------------------------------------------------------------
@@ -637,6 +648,11 @@ __all__ = [
     "_NEWS_TICKERS",
     "_PERIOD_MAP",
     "_PRICE_CACHE_DIR",
+    "BehaviorInsight",
+    "ConfidenceLevel",
+    "PortfolioTradeStats",
+    "StyleMetrics",
+    "TradeStats",
     "_apply_llm_results",
     "_build_holdings_timeline",
     "_build_symbol_labels",
@@ -664,9 +680,11 @@ __all__ = [
     "compute_correlation_matrix",
     "compute_daily_change",
     "compute_drawdown_series",
+    "compute_monthly_seasonality",
     "compute_performance_attribution",
     "compute_risk_metrics",
     "compute_rolling_sharpe",
+    "compute_rolling_sharpe_trend",
     "compute_top_worst_performers",
     "compute_weight_drift",
     "fetch_economic_news",
@@ -676,6 +694,7 @@ __all__ = [
     "get_monthly_summary",
     "get_sector_breakdown",
     "get_trade_activity",
+    "load_behavior_insight",
     "load_portfolio",
     "run_dashboard_health_check",
 ]
