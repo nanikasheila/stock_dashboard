@@ -137,6 +137,7 @@ def _check_portfolio_changed() -> bool:
         load_economic_news.clear()
         load_behavior_insight_cached.clear()
         load_timing_insight_cached.clear()
+        load_trade_memo_context_cached.clear()
         st.session_state[SK.PORTFOLIO_FINGERPRINT] = current_fp
         st.session_state[SK.LAST_REFRESH] = time.strftime("%Y-%m-%d %H:%M:%S")
         return True
@@ -195,6 +196,24 @@ def load_timing_insight_cached():
         from src.core.behavior.models import PortfolioTimingInsight
 
         return PortfolioTimingInsight.empty()
+
+
+@st.cache_data(ttl=300, show_spinner="レトロ文脈を集計中...")
+def load_trade_memo_context_cached():
+    from components.dl_behavior import load_trade_memo_context
+
+    try:
+        return load_trade_memo_context()
+    except Exception as _exc:
+        import logging
+
+        logging.getLogger(__name__).warning("load_trade_memo_context failed: %s", _exc)
+        return {
+            "reviewed_trade_count": 0,
+            "memo_trade_count": 0,
+            "memo_coverage_pct": 0.0,
+            "top_themes": [],
+        }
 
 
 @st.cache_data(ttl=600, show_spinner="経済ニュースを取得中...")
@@ -411,6 +430,7 @@ with _tab_settings:
         load_economic_news.clear()
         load_behavior_insight_cached.clear()
         load_timing_insight_cached.clear()
+        load_trade_memo_context_cached.clear()
         # b. ディスクキャッシュ（価格履歴 CSV）を削除
         _deleted = clear_price_cache()
         # c. 手動更新タイムスタンプを記録
@@ -661,6 +681,7 @@ if st.sidebar.button("🔄 今すぐ更新", width="stretch"):
     load_economic_news.clear()
     load_behavior_insight_cached.clear()
     load_timing_insight_cached.clear()
+    load_trade_memo_context_cached.clear()
     _cache_dir = Path(_SCRIPT_DIR).resolve() / "data" / "cache" / "price_history"
     if _cache_dir.exists():
         for f in _cache_dir.glob("*.csv"):
@@ -680,6 +701,7 @@ if _refresh_count > st.session_state.get(SK.PREV_REFRESH_COUNT, 0):
     load_economic_news.clear()
     load_behavior_insight_cached.clear()
     load_timing_insight_cached.clear()
+    load_trade_memo_context_cached.clear()
     st.session_state[SK.LAST_REFRESH] = time.strftime("%Y-%m-%d %H:%M:%S")
     st.session_state[SK.PREV_REFRESH_COUNT] = _refresh_count
 
@@ -1226,6 +1248,7 @@ with _tab_insights:
     # =====================================================================
     _behavior_insight = load_behavior_insight_cached()
     _timing_insight = load_timing_insight_cached()
+    _retro_context = load_trade_memo_context_cached()
 
     # スタイルプロファイル + バイアス検出（positions/history_df が必要なため
     # キャッシュ外でインラインに計算する。内部の重い処理はすでに上記でキャッシュ済み）
@@ -1260,6 +1283,7 @@ with _tab_insights:
         timing_insight=_timing_insight,
         style_profile=_style_profile,
         style_biases=_style_biases,
+        retro_context=_retro_context,
     )
 
 

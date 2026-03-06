@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,6 +38,15 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 _DEFAULT_HISTORY_DIR = str(Path(_PROJECT_ROOT) / "data" / "history")
+
+_MEMO_THEME_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "押し目買い": ("押し目", "dip", "pullback", "調整", "下落"),
+    "利益確定": ("利確", "利益確定", "take profit", "profit"),
+    "損切り": ("損切", "cut loss", "stop loss", "ロスカット", "撤退"),
+    "リバランス": ("リバランス", "rebalance", "配分調整", "比率調整"),
+    "長期保有": ("長期", "積立", "core", "long term", "長く持つ"),
+    "決算/イベント": ("決算", "earnings", "fomc", "event", "材料", "ニュース"),
+}
 
 from src.core.behavior import (
     BehaviorInsight,
@@ -333,6 +343,54 @@ def load_style_profile_insight(
     return style_profile, bias_signals
 
 
+def load_trade_memo_context(
+    base_dir: str = _DEFAULT_HISTORY_DIR,
+    limit: int = 40,
+) -> dict[str, object]:
+    """Summarize recent trade memos into privacy-safe aggregate themes.
+
+    Why: The optional AI retrospective should benefit from user trade notes
+         without sending raw memo text or ticker symbols to Copilot.
+    How: Load the newest trade history entries, count memo coverage, and map
+         memo keywords to a small fixed theme set. Only aggregate counts are
+         returned, so the caller can build anonymized prompts.
+    """
+    from src.data.history_store import load_history
+
+    trades = load_history("trade", base_dir=base_dir)
+    if limit > 0:
+        trades = trades[:limit]
+
+    memo_trades = [trade for trade in trades if str(trade.get("memo", "")).strip()]
+    theme_counts: Counter[str] = Counter()
+
+    for trade in memo_trades:
+        memo_text = str(trade.get("memo", "")).strip().lower()
+        if not memo_text:
+            continue
+
+        matched_themes: set[str] = set()
+        for theme, keywords in _MEMO_THEME_KEYWORDS.items():
+            if any(keyword.lower() in memo_text for keyword in keywords):
+                matched_themes.add(theme)
+
+        for theme in matched_themes:
+            theme_counts[theme] += 1
+
+    reviewed_trade_count = len(trades)
+    memo_trade_count = len(memo_trades)
+    memo_coverage_pct = round(memo_trade_count / reviewed_trade_count * 100, 1) if reviewed_trade_count > 0 else 0.0
+
+    top_themes = [{"theme": theme, "count": count} for theme, count in theme_counts.most_common(3)]
+
+    return {
+        "reviewed_trade_count": reviewed_trade_count,
+        "memo_trade_count": memo_trade_count,
+        "memo_coverage_pct": memo_coverage_pct,
+        "top_themes": top_themes,
+    }
+
+
 __all__ = [
     "BehaviorInsight",
     "BiasSignal",
@@ -345,4 +403,5 @@ __all__ = [
     "load_behavior_insight",
     "load_style_profile_insight",
     "load_timing_insight",
+    "load_trade_memo_context",
 ]

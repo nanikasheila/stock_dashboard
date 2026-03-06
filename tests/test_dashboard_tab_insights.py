@@ -583,6 +583,30 @@ class TestBuildRetroPayload:
         assert payload["realized_pnl_jpy"] == -30_000
         assert payload["unrealized_pnl_jpy"] == -10_000
 
+    def test_memo_context_is_summarized_without_raw_text(self) -> None:
+        """メモ文脈が匿名テーマとしてペイロードに含まれること."""
+        payload = tab_insights._build_retro_payload(
+            behavior=BehaviorInsight.empty(),
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            retro_context={
+                "memo_trade_count": 3,
+                "memo_coverage_pct": 75.0,
+                "top_themes": [
+                    {"theme": "押し目買い", "count": 2},
+                    {"theme": "利益確定", "count": 1},
+                ],
+            },
+            positions=[],
+            realized_pnl=0.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+        assert payload["memo_trade_count"] == 3
+        assert payload["memo_coverage_pct"] == 75.0
+        assert payload["memo_themes"] == ["押し目買い", "利益確定"]
+
 
 # ---------------------------------------------------------------------------
 # _build_retro_prompt — 純粋関数テスト（Streamlit 不要）
@@ -682,6 +706,27 @@ class TestBuildRetroPrompt:
         )
         prompt = tab_insights._build_retro_prompt(payload)
         assert "-20,000円" in prompt
+
+    def test_prompt_includes_memo_theme_summary(self) -> None:
+        """メモテーマ集計があるとプロンプトに匿名サマリーとして含まれること."""
+        payload = tab_insights._build_retro_payload(
+            behavior=BehaviorInsight.empty(),
+            timing=PortfolioTimingInsight.empty(),
+            style_profile=None,
+            style_biases=None,
+            retro_context={
+                "memo_trade_count": 2,
+                "memo_coverage_pct": 50.0,
+                "top_themes": [{"theme": "押し目買い", "count": 2}],
+            },
+            positions=[],
+            realized_pnl=0.0,
+            unrealized_pnl=0.0,
+            total_value=0.0,
+        )
+        prompt = tab_insights._build_retro_prompt(payload)
+        assert "メモ付き取引数" in prompt
+        assert "押し目買い" in prompt
 
 
 # ---------------------------------------------------------------------------

@@ -184,6 +184,10 @@ def _render_trade_statistics_section(behavior_insight: BehaviorInsight) -> None:
         total_closed = wl.win_count + wl.loss_count
         if total_closed > 0:
             st.caption(f"勝ち: **{wl.win_count}** 件 ／ 負け: **{wl.loss_count}** 件")
+            st.progress(
+                wl.win_count / total_closed,
+                text=f"勝ち比率: {wl.win_count}/{total_closed}",
+            )
             if wl.avg_win_jpy is not None:
                 st.caption(f"平均利益: ¥{wl.avg_win_jpy:+,.0f}")
             if wl.avg_loss_jpy is not None:
@@ -770,7 +774,7 @@ def _render_sharpe_stability_subsection(history_df: pd.DataFrame) -> None:
 
 _RETRO_PRIVACY_NOTICE = (
     "このボタンを押すと、以下のデータが **GitHub Copilot** に送信されます。 "
-    "個人情報・口座情報・証券コードの実名は含まれません。 "
+    "個人情報・口座情報・証券コードの実名や生のメモ本文は含まれません。 "
     "送信内容は下の「送信データプレビュー」で事前確認できます。 "
     "実行は任意です。キャンセルしたい場合はこのエクスパンダーを閉じてください。"
 )
@@ -785,6 +789,7 @@ def _build_retro_payload(
     realized_pnl: float,
     unrealized_pnl: float,
     total_value: float,
+    retro_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """ローカルで決定論的なレトロスペクティブ用サマリーペイロードを構築する.
 
@@ -796,6 +801,10 @@ def _build_retro_payload(
     ts = behavior.trade_stats
     wl = behavior.win_loss
     hp = behavior.holding_period
+    retro_context = retro_context or {}
+    memo_themes = [
+        str(item.get("theme", "")) for item in retro_context.get("top_themes", []) if str(item.get("theme", "")).strip()
+    ]
 
     payload: dict[str, Any] = {
         "total_buy": ts.total_buy_count if ts else 0,
@@ -816,6 +825,9 @@ def _build_retro_payload(
         else None,
         "adi_label": style_profile.label if style_profile else None,
         "bias_signals": [b.title for b in style_biases] if style_biases else [],
+        "memo_trade_count": int(retro_context.get("memo_trade_count", 0) or 0),
+        "memo_coverage_pct": retro_context.get("memo_coverage_pct"),
+        "memo_themes": memo_themes,
         "confidence": behavior.confidence,
     }
     return payload
@@ -870,6 +882,12 @@ def _build_retro_prompt(payload: dict[str, Any]) -> str:
         lines.append(f"- 投資スタイルスコア（ADI）: {payload['adi_score']}/100（{adi_label}）")
     if payload["bias_signals"]:
         lines.append(f"- 検出されたバイアス: {', '.join(payload['bias_signals'])}")
+    if payload["memo_trade_count"] > 0:
+        lines.append(f"- メモ付き取引数（直近）: {payload['memo_trade_count']}件")
+        if payload["memo_coverage_pct"] is not None:
+            lines.append(f"- メモ記録率（直近）: {payload['memo_coverage_pct']}%")
+        if payload["memo_themes"]:
+            lines.append(f"- 取引メモの主要テーマ: {', '.join(payload['memo_themes'])}")
 
     lines += [
         "",
@@ -892,6 +910,7 @@ def _render_retrospective_section(
     timing: PortfolioTimingInsight,
     style_profile: StyleProfile | None,
     style_biases: list[BiasSignal] | None,
+    retro_context: dict[str, Any] | None = None,
     positions: list[dict],
     realized_pnl: float,
     unrealized_pnl: float,
@@ -916,6 +935,7 @@ def _render_retrospective_section(
         timing=timing,
         style_profile=style_profile,
         style_biases=style_biases,
+        retro_context=retro_context,
         positions=positions,
         realized_pnl=realized_pnl,
         unrealized_pnl=unrealized_pnl,
@@ -939,10 +959,15 @@ def _render_retrospective_section(
 
     # --- プライバシー通知 ---
     st.warning(_RETRO_PRIVACY_NOTICE, icon="🔒")
+    if payload["memo_trade_count"] > 0:
+        _memo_caption = f"直近のメモ付き取引 {payload['memo_trade_count']} 件を匿名テーマ化して要約に利用します。"
+        if payload["memo_themes"]:
+            _memo_caption += f" 主要テーマ: {', '.join(payload['memo_themes'])}"
+        st.caption(_memo_caption)
 
     # --- 送信データプレビュー ---
     with st.expander("📋 送信データプレビュー（クリックして確認）", expanded=False):
-        st.caption("以下のテキストのみが Copilot に送信されます。銘柄コード・個人情報は含まれません。")
+        st.caption("以下のテキストのみが Copilot に送信されます。銘柄コード・個人情報・生のメモ本文は含まれません。")
         st.code(prompt, language="markdown")
 
     # --- 実行・クリアボタン ---
@@ -1036,6 +1061,7 @@ def render_insights_tab(
     timing_insight: PortfolioTimingInsight | None = None,
     style_profile: StyleProfile | None = None,
     style_biases: list[BiasSignal] | None = None,
+    retro_context: dict[str, Any] | None = None,
 ) -> None:
     """インサイトタブのコンテンツを描画する.
 
@@ -1071,6 +1097,9 @@ def render_insights_tab(
     style_biases:
         ``load_style_profile_insight()`` から得た ``list[BiasSignal]``。
         ``None`` の場合はバイアスセクションを省略する。
+    retro_context:
+        ``load_trade_memo_context()`` から得た匿名化メモ要約。
+        ``None`` の場合はメモ関連集計を省略する。
     """
     _behavior = behavior_insight if behavior_insight is not None else BehaviorInsight.empty()
     _timing = timing_insight if timing_insight is not None else PortfolioTimingInsight.empty()
@@ -1138,6 +1167,7 @@ def render_insights_tab(
             timing=_timing,
             style_profile=style_profile,
             style_biases=style_biases,
+            retro_context=retro_context,
             positions=positions,
             realized_pnl=realized_pnl,
             unrealized_pnl=unrealized_pnl,
