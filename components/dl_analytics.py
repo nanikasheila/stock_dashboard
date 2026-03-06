@@ -553,12 +553,16 @@ def compute_monthly_seasonality(history_df: pd.DataFrame) -> dict:
         months_of_data: int          月次リターンの観測数
         monthly_avg_returns: dict[int, float]  月番号(1-12) -> 平均月次リターン(%)
         year_returns: dict[int, float]         年 -> 年間リターン(%, compounded from monthly)
+        year_month_returns: dict[str, float]   "YYYY-MM" -> 月次リターン(%)
+            ヒートマップ描画用に年×月の個別リターンを保持する。
+            データ不足時は空辞書。
     """
     _empty: dict = {
         "has_sufficient_data": False,
         "months_of_data": 0,
         "monthly_avg_returns": {},
         "year_returns": {},
+        "year_month_returns": {},
     }
 
     if history_df.empty or "total" not in history_df.columns:
@@ -589,11 +593,20 @@ def compute_monthly_seasonality(history_df: pd.DataFrame) -> dict:
         compounded = float(((1 + group / 100).prod() - 1) * 100)
         year_returns[int(year_val)] = round(compounded, 1)
 
+    # Individual year×month returns for heatmap visualization
+    # Why: 月×年のクロス集計により、特定の年における季節性の偏りや
+    #      年をまたいだ月次トレンドを視覚的に把握できる。
+    # How: monthly_returns の各観測値を "YYYY-MM" キーで辞書化する。
+    year_month_returns: dict[str, float] = {
+        f"{idx.year}-{idx.month:02d}": round(float(val), 2) for idx, val in monthly_returns.items()
+    }
+
     return {
         "has_sufficient_data": has_sufficient_data,
         "months_of_data": months_of_data,
         "monthly_avg_returns": monthly_avg_returns,
         "year_returns": year_returns,
+        "year_month_returns": year_month_returns,
     }
 
 

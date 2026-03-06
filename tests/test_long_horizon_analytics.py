@@ -145,6 +145,56 @@ class TestComputeMonthlySeasonal:
         for v in result["monthly_avg_returns"].values():
             assert v == pytest.approx(0.0, abs=1e-6)
 
+    # --- year_month_returns 追加フィールドのテスト ---
+
+    def test_year_month_returns_key_present(self) -> None:
+        """year_month_returns キーが常に返り値に含まれること."""
+        result = compute_monthly_seasonality(pd.DataFrame())
+        assert "year_month_returns" in result
+
+    def test_year_month_returns_empty_for_insufficient_data(self) -> None:
+        """データ不足（< 2行）のとき year_month_returns が空辞書であること."""
+        df = pd.DataFrame({"total": [1_000_000.0]}, index=pd.date_range("2023-01-01", periods=1))
+        result = compute_monthly_seasonality(df)
+        assert result["year_month_returns"] == {}
+
+    def test_year_month_returns_nonempty_for_sufficient_data(self) -> None:
+        """12ヶ月以上のデータでは year_month_returns が空でないこと."""
+        df = _make_history_df(months=24)
+        result = compute_monthly_seasonality(df)
+        assert result["has_sufficient_data"] is True
+        assert len(result["year_month_returns"]) > 0
+
+    def test_year_month_returns_key_format_yyyy_mm(self) -> None:
+        """year_month_returns のキーが 'YYYY-MM' 形式であること."""
+        import re
+
+        df = _make_history_df(months=24, start="2022-01-01")
+        result = compute_monthly_seasonality(df)
+        pattern = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+        for key in result["year_month_returns"]:
+            assert pattern.match(key), f"Invalid key format: {key!r}"
+
+    def test_year_month_returns_values_are_finite_floats(self) -> None:
+        """year_month_returns の値が有限な float であること."""
+        df = _make_history_df(months=24, start="2022-01-01")
+        result = compute_monthly_seasonality(df)
+        for key, val in result["year_month_returns"].items():
+            assert isinstance(val, float), f"{key}: expected float, got {type(val)}"
+            assert np.isfinite(val), f"{key}: non-finite value {val}"
+
+    def test_year_month_returns_count_matches_months_of_data(self) -> None:
+        """year_month_returns のエントリ数が months_of_data と一致すること."""
+        df = _make_history_df(months=24, start="2022-01-01")
+        result = compute_monthly_seasonality(df)
+        assert len(result["year_month_returns"]) == result["months_of_data"]
+
+    def test_year_month_returns_empty_for_no_total_column(self) -> None:
+        """total 列がない DataFrame では year_month_returns が空辞書であること."""
+        df = pd.DataFrame({"other": [1.0, 2.0]}, index=pd.date_range("2023-01-01", periods=2))
+        result = compute_monthly_seasonality(df)
+        assert result["year_month_returns"] == {}
+
 
 # ===========================================================================
 # compute_rolling_sharpe_trend
@@ -358,6 +408,38 @@ class TestRenderSeasonalitySubsection:
         df = _make_history_df(months=60, start="2019-01-01")
         with patch.dict("sys.modules", {"streamlit": _st_mock}):
             tab_insights._render_seasonality_subsection(df)
+
+    def test_heatmap_calls_plotly_chart_when_sufficient_data(self) -> None:
+        """12ヶ月以上のデータで st.plotly_chart が呼び出されること."""
+        df = _make_history_df(months=24)
+        st_mock = MagicMock()
+        st_mock.columns.side_effect = _mock_columns
+        with patch.object(tab_insights, "st", st_mock):
+            tab_insights._render_seasonality_subsection(df)
+        st_mock.plotly_chart.assert_called_once()
+
+    def test_heatmap_not_called_when_insufficient_data(self) -> None:
+        """データ不足（< 12ヶ月）のとき st.plotly_chart が呼び出されないこと."""
+        df = _make_short_history_df(trading_days=30)  # ~1-2 months
+        st_mock = MagicMock()
+        st_mock.columns.side_effect = _mock_columns
+        with patch.object(tab_insights, "st", st_mock):
+            tab_insights._render_seasonality_subsection(df)
+        st_mock.plotly_chart.assert_not_called()
+
+    def test_render_seasonality_heatmap_direct_call(self) -> None:
+        """_render_seasonality_heatmap を直接呼び出して例外が発生しないこと."""
+        from components.dl_analytics import compute_monthly_seasonality
+
+        df = _make_history_df(months=24)
+        result = compute_monthly_seasonality(df)
+        year_month_returns = result["year_month_returns"]
+        assert year_month_returns  # 空でないことを確認
+
+        st_mock = MagicMock()
+        with patch.object(tab_insights, "st", st_mock):
+            tab_insights._render_seasonality_heatmap(year_month_returns)
+        st_mock.plotly_chart.assert_called_once()
 
 
 # ===========================================================================

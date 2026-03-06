@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import plotly.graph_objects as go
 import streamlit as st
 
 # --- プロジェクトルートを sys.path に追加 ---
@@ -46,6 +47,7 @@ from src.core.behavior.models import (
     BiasSignal,
     ConfidenceLevel,
     PortfolioTimingInsight,
+    SellRecord,
     StyleProfile,
 )
 
@@ -88,6 +90,88 @@ def _render_confidence_badge(confidence: ConfidenceLevel) -> None:
 # ---------------------------------------------------------------------------
 # セクション内部ヘルパー
 # ---------------------------------------------------------------------------
+
+
+def _render_pnl_distribution(sell_records: list[SellRecord]) -> None:
+    """Render P&L distribution histogram for individual trades.
+
+    Why: Aggregated win/loss stats hide the distribution shape.
+         A histogram reveals whether wins/losses are symmetric,
+         skewed, or have fat tails — information invisible in
+         simple win-rate or average-profit metrics.
+    How: Plot a plotly histogram of per-trade P&L values split into
+         positive (green) and negative (red) traces.
+         Summary statistics are shown below in metric columns.
+
+    Parameters
+    ----------
+    sell_records : list[SellRecord]
+        Per-trade sell records produced by FIFO matching.
+        Renders an info message when fewer than 3 records are available.
+    """
+    import statistics
+
+    if len(sell_records) < 3:
+        st.info("売却取引が3件以上蓄積されると損益分布が表示されます。")
+        return
+
+    pnl_values = [r.pnl_jpy for r in sell_records]
+    positive = [v for v in pnl_values if v >= 0]
+    negative = [v for v in pnl_values if v < 0]
+
+    fig = go.Figure()
+
+    if positive:
+        fig.add_trace(
+            go.Histogram(
+                x=positive,
+                name="利益",
+                marker_color="#4ade80",
+                nbinsx=20,
+                opacity=0.85,
+            )
+        )
+
+    if negative:
+        fig.add_trace(
+            go.Histogram(
+                x=negative,
+                name="損失",
+                marker_color="#f87171",
+                nbinsx=20,
+                opacity=0.85,
+            )
+        )
+
+    fig.update_layout(
+        barmode="overlay",
+        xaxis_title="損益額（円）",
+        yaxis_title="取引回数",
+        showlegend=True,
+        height=300,
+        margin={"l": 20, "r": 20, "t": 20, "b": 40},
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- サマリー統計 ---
+    wins = [v for v in pnl_values if v >= 0]
+    losses = [v for v in pnl_values if v < 0]
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        median_pnl = statistics.median(pnl_values)
+        st.metric("中央値損益", f"¥{median_pnl:+,.0f}")
+    with c2:
+        st.metric("最大利益", f"¥{max(pnl_values):+,.0f}")
+    with c3:
+        st.metric("最大損失", f"¥{min(pnl_values):+,.0f}")
+    with c4:
+        avg_win = sum(wins) / len(wins) if wins else 0.0
+        st.metric("勝ち平均", f"¥{avg_win:+,.0f}")
+    with c5:
+        avg_loss = sum(losses) / len(losses) if losses else 0.0
+        st.metric("負け平均", f"¥{avg_loss:+,.0f}")
 
 
 def _render_trade_statistics_section(behavior_insight: BehaviorInsight) -> None:
@@ -203,6 +287,10 @@ def _render_trade_statistics_section(behavior_insight: BehaviorInsight) -> None:
 
     # --- 信頼度バッジ ---
     _render_confidence_badge(behavior_insight.confidence)
+
+    # --- 損益分布チャート ---
+    st.markdown("**📈 損益分布（per-trade ヒストグラム）**")
+    _render_pnl_distribution(behavior_insight.trade_stats.all_sell_records)
 
 
 def _render_timing_review_section(timing_insight: PortfolioTimingInsight) -> None:
@@ -603,10 +691,12 @@ def _render_seasonality_subsection(history_df: pd.DataFrame) -> None:
     """月次季節性パターンを描画する.
 
     Why: 暦月ごとのリターン傾向を把握することで、ポジション調整の
-         参考情報として活用できる。
-    How: compute_monthly_seasonality() で月次平均リターンと年間リターンを算出し、
-         コンパクトなテーブル形式で表示する。12ヶ月未満のデータでは
-         gracefully degrade してデータ不足メッセージを表示する。
+         参考情報として活用できる。年×月のクロス集計をヒートマップで
+         表示することで、特定年の異常値や長期的な月次トレンドの変化も
+         一目で識別できる。
+    How: compute_monthly_seasonality() で月次リターンデータを取得し、
+         12ヶ月以上のデータがある場合は plotly Heatmap で年×月の
+         リターンマトリクスを描画する。不足時は月平均メトリクスのみ表示。
     """
     st.markdown("**📅 月次季節性パターン**")
     seasonality = compute_monthly_seasonality(history_df)
@@ -622,6 +712,12 @@ def _render_seasonality_subsection(history_df: pd.DataFrame) -> None:
             f"⚠️ 現在 **{months_of_data}ヶ月** 分のデータがあります。"
             " 季節性パターンの信頼性を高めるには **12ヶ月以上** 必要です。"
         )
+
+    year_month_returns: dict[str, float] = seasonality.get("year_month_returns", {})
+
+    # --- Plotly heatmap (12ヶ月以上かつ year_month_returns が存在する場合) ---
+    if seasonality["has_sufficient_data"] and year_month_returns:
+        _render_seasonality_heatmap(year_month_returns)
 
     monthly_avg = seasonality["monthly_avg_returns"]
     if monthly_avg:
@@ -668,6 +764,80 @@ def _render_seasonality_subsection(history_df: pd.DataFrame) -> None:
             with _yr_cols[_yi % len(_yr_cols)]:
                 _yr_sign = "+" if ret >= 0 else ""
                 st.metric(f"{yr}年", f"{_yr_sign}{ret:.1f}%")
+
+
+def _render_seasonality_heatmap(year_month_returns: dict[str, float]) -> None:
+    """年×月のリターンヒートマップを plotly で描画する.
+
+    Why: 月次リターンを行列形式で可視化することで、特定月の傾向
+         （例: 1月効果）や年をまたいだ季節性パターンを直感的に把握できる。
+         RdYlGn カラースケールでマイナス(赤)とプラス(緑)を明確に区別する。
+    How: year_month_returns の "YYYY-MM" キーから年リストと月リストを構築し、
+         z マトリクスを埋める。データが存在しないセルは None として描画上
+         空白扱いにする。midpoint=0 を設定して中立(0%)が黄色になるよう固定。
+
+    Parameters
+    ----------
+    year_month_returns : dict[str, float]
+        "YYYY-MM" -> 月次リターン(%) の辞書。
+    """
+    # 年・月リストを抽出してソート
+    years: list[int] = sorted({int(k[:4]) for k in year_month_returns})
+    months: list[int] = list(range(1, 13))
+    month_labels: list[str] = [_MONTH_NAMES_JA[m] for m in months]
+
+    # z マトリクス構築: 行=年(古い順)、列=月(1〜12)
+    # データが存在しないセルは None(ヒートマップ上は空白)
+    z: list[list[float | None]] = []
+    text: list[list[str]] = []
+    for year in years:
+        row_z: list[float | None] = []
+        row_text: list[str] = []
+        for month in months:
+            key = f"{year}-{month:02d}"
+            val = year_month_returns.get(key)
+            row_z.append(val)
+            if val is not None:
+                sign = "+" if val >= 0 else ""
+                row_text.append(f"{sign}{val:.1f}%")
+            else:
+                row_text.append("")
+        z.append(row_z)
+        text.append(row_text)
+
+    # midpoint=0 を実現するために zmin/zmax を絶対値の最大値で対称化
+    # Why: colorscale の中央(黄)が 0% に対応することで
+    #      プラス/マイナスの直感的な読み取りが可能になる。
+    all_vals = [v for v in year_month_returns.values() if v is not None]
+    if all_vals:
+        abs_max = max(abs(min(all_vals)), abs(max(all_vals)))
+        abs_max = abs_max if abs_max > 0 else 1.0
+    else:
+        abs_max = 1.0
+
+    fig = go.Figure(
+        go.Heatmap(
+            z=z,
+            x=month_labels,
+            y=[str(yr) for yr in years],
+            text=text,
+            texttemplate="%{text}",
+            colorscale="RdYlGn",
+            zmin=-abs_max,
+            zmax=abs_max,
+            colorbar={"title": "リターン(%)"},
+            hoverongaps=False,
+        )
+    )
+    fig.update_layout(
+        title="月次リターン ヒートマップ（年×月）",
+        xaxis_title="月",
+        yaxis_title="年",
+        yaxis={"autorange": "reversed"},  # 古い年が上になるよう反転
+        margin={"t": 50, "b": 40, "l": 60, "r": 20},
+        height=max(200, 60 * len(years) + 80),
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_benchmark_comparison_subsection(
