@@ -15,6 +15,7 @@ from src.core.behavior.models import (
     ConfidenceLevel,
     HoldingPeriodSummary,
     PortfolioTradeStats,
+    SellRecord,
     StyleMetrics,
     TradeStats,
     WinLossSummary,
@@ -137,6 +138,7 @@ class _SellEvent:
     pnl_jpy: float
     proceeds_jpy: float
     hold_days: float | None  # avg hold days for lots consumed; None if dates missing
+    sell_date: str = ""  # YYYY-MM-DD; empty string when trade date is unavailable
 
 
 def _run_fifo_matching(
@@ -244,6 +246,7 @@ def _run_fifo_matching(
                     pnl_jpy=sell_pnl,
                     proceeds_jpy=proceeds_jpy,
                     hold_days=avg_hold,
+                    sell_date=trade_date.isoformat() if trade_date is not None else "",
                 )
             )
 
@@ -285,6 +288,7 @@ def compute_trade_stats_by_symbol(
     loss_counts: dict[str, int] = defaultdict(int)
     realized_pnl: dict[str, float] = defaultdict(float)
     hold_days_per_sell: dict[str, list[float]] = defaultdict(list)
+    sell_records_per_symbol: dict[str, list[SellRecord]] = defaultdict(list)
 
     for e in sell_events:
         sym = e.symbol
@@ -297,6 +301,14 @@ def compute_trade_stats_by_symbol(
             loss_counts[sym] += 1
         if e.hold_days is not None:
             hold_days_per_sell[sym].append(e.hold_days)
+        sell_records_per_symbol[sym].append(
+            SellRecord(
+                symbol=sym,
+                sell_date=e.sell_date,
+                pnl_jpy=e.pnl_jpy,
+                holding_days=int(e.hold_days) if e.hold_days is not None else 0,
+            )
+        )
 
     all_syms = set(buy_summaries) | set(sell_counts)
     result: dict[str, TradeStats] = {}
@@ -323,6 +335,7 @@ def compute_trade_stats_by_symbol(
             loss_count=loss_counts[sym],
             avg_hold_days=round(avg_hold, 1) if avg_hold is not None else None,
             confidence=_classify_confidence(sc),
+            sell_records=sell_records_per_symbol[sym],
         )
 
     return result
@@ -374,6 +387,8 @@ def compute_portfolio_trade_stats(
 
     portfolio_confidence = _classify_confidence(total_sell)
 
+    all_sell_recs: list[SellRecord] = [record for s in by_symbol.values() for record in s.sell_records]
+
     return PortfolioTradeStats(
         symbols_traded=sorted(by_symbol.keys()),
         total_buy_count=total_buy,
@@ -384,6 +399,7 @@ def compute_portfolio_trade_stats(
         avg_hold_days=avg_hold,
         by_symbol=by_symbol,
         confidence=portfolio_confidence,
+        all_sell_records=all_sell_recs,
     )
 
 

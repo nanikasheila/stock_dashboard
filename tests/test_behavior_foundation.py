@@ -30,6 +30,7 @@ from src.core.behavior import (
     BehaviorInsight,
     ConfidenceLevel,
     PortfolioTradeStats,
+    SellRecord,
     StyleMetrics,
     TradeStats,
     compute_portfolio_trade_stats,
@@ -629,3 +630,125 @@ class TestDataLoaderFacade:
         assert callable(get_current_snapshot)
         assert callable(get_monthly_summary)
         assert callable(run_dashboard_health_check)
+
+    def test_sell_record_importable(self):
+        from components.data_loader import SellRecord as SR
+
+        assert SR is SellRecord
+
+
+# ---------------------------------------------------------------------------
+# SellRecord — TradeStats and PortfolioTradeStats integration
+# ---------------------------------------------------------------------------
+
+
+class TestSellRecordIntegration:
+    """Verify SellRecord is collected correctly during FIFO matching."""
+
+    def test_sell_record_in_trade_stats(self) -> None:
+        """TradeStats.sell_records is populated after a sell transaction."""
+        trades = [
+            _buy("A", "2024-01-01", 100, 1000.0),
+            _sell("A", "2024-06-01", 100, 1200.0),
+        ]
+        result = compute_trade_stats_by_symbol(trades, FX)
+        assert "A" in result
+        assert len(result["A"].sell_records) == 1
+        assert isinstance(result["A"].sell_records[0], SellRecord)
+
+    def test_no_sell_records_when_buy_only(self) -> None:
+        """When no sells occur, sell_records must be empty."""
+        trades = [_buy("B", "2024-01-01", 50, 500.0)]
+        result = compute_trade_stats_by_symbol(trades, FX)
+        assert result["B"].sell_records == []
+
+    def test_sell_record_fields_match_event(self) -> None:
+        """SellRecord.pnl_jpy, sell_date, holding_days are populated from the sell event."""
+        trades = [
+            _buy("C", "2024-01-10", 100, 2000.0),
+            _sell("C", "2024-07-10", 100, 2500.0),
+        ]
+        result = compute_trade_stats_by_symbol(trades, FX)
+        rec = result["C"].sell_records[0]
+        assert rec.symbol == "C"
+        assert rec.sell_date == "2024-07-10"
+        assert rec.pnl_jpy == pytest.approx(50000.0)
+        # 2024-01-10 → 2024-07-10 = 182 days
+        assert rec.holding_days == 182
+
+    def test_sell_records_pnl_sum_matches_realized_pnl(self) -> None:
+        """Sum of SellRecord.pnl_jpy must equal TradeStats.realized_pnl_jpy."""
+        trades = [
+            _buy("D", "2024-01-01", 50, 1000.0),
+            _sell("D", "2024-03-01", 20, 1200.0),
+            _sell("D", "2024-06-01", 30, 900.0),
+        ]
+        result = compute_trade_stats_by_symbol(trades, FX)
+        ts = result["D"]
+        pnl_sum = sum(r.pnl_jpy for r in ts.sell_records)
+        assert pnl_sum == pytest.approx(ts.realized_pnl_jpy, abs=1.0)
+
+    def test_multiple_sell_records_count(self) -> None:
+        """Multiple sells produce multiple SellRecord entries."""
+        trades = [
+            _buy("E", "2024-01-01", 100, 1000.0),
+            _sell("E", "2024-03-01", 30, 1100.0),
+            _sell("E", "2024-05-01", 40, 1050.0),
+            _sell("E", "2024-08-01", 30, 980.0),
+        ]
+        result = compute_trade_stats_by_symbol(trades, FX)
+        assert len(result["E"].sell_records) == 3
+
+    def test_portfolio_all_sell_records_aggregates_symbols(self) -> None:
+        """PortfolioTradeStats.all_sell_records contains records from all symbols."""
+        trades = [
+            _buy("F", "2024-01-01", 100, 500.0),
+            _sell("F", "2024-04-01", 100, 600.0),
+            _buy("G", "2024-01-15", 50, 800.0),
+            _sell("G", "2024-05-15", 50, 850.0),
+        ]
+        portfolio = compute_portfolio_trade_stats(trades, FX)
+        assert len(portfolio.all_sell_records) == 2
+        symbols_in_records = {r.symbol for r in portfolio.all_sell_records}
+        assert symbols_in_records == {"F", "G"}
+
+    def test_portfolio_all_sell_records_empty_on_no_sells(self) -> None:
+        """PortfolioTradeStats.all_sell_records is empty when there are no sells."""
+        trades = [
+            _buy("H", "2024-01-01", 100, 1000.0),
+            _buy("I", "2024-02-01", 50, 2000.0),
+        ]
+        portfolio = compute_portfolio_trade_stats(trades, FX)
+        assert portfolio.all_sell_records == []
+
+    def test_portfolio_all_sell_records_pnl_sum_consistency(self) -> None:
+        """all_sell_records pnl sum equals portfolio total_realized_pnl_jpy."""
+        trades = [
+            _buy("J", "2024-01-01", 100, 1000.0),
+            _sell("J", "2024-06-01", 100, 1300.0),
+            _buy("K", "2024-02-01", 50, 2000.0),
+            _sell("K", "2024-08-01", 50, 1800.0),
+        ]
+        portfolio = compute_portfolio_trade_stats(trades, FX)
+        pnl_sum = sum(r.pnl_jpy for r in portfolio.all_sell_records)
+        assert pnl_sum == pytest.approx(portfolio.total_realized_pnl_jpy, abs=1.0)
+
+    def test_sell_record_holding_days_zero_when_no_dates(self) -> None:
+        """holding_days falls back to 0 when lot date is unavailable."""
+        # Trade dict without a parseable date on the buy side
+        buy_no_date = {
+            "category": "trade",
+            "date": "",  # unparseable — lot gets date=None
+            "symbol": "NODATES",
+            "trade_type": "buy",
+            "shares": 100,
+            "price": 1000.0,
+            "currency": "JPY",
+            "fx_rate": 0.0,
+            "settlement_jpy": 100000.0,
+            "settlement_usd": 0.0,
+        }
+        sell_with_date = _sell("NODATES", "2024-06-01", 100, 1200.0)
+        result = compute_trade_stats_by_symbol([buy_no_date, sell_with_date], FX)
+        rec = result["NODATES"].sell_records[0]
+        assert rec.holding_days == 0

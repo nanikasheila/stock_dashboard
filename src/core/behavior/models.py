@@ -10,6 +10,36 @@ import enum
 from dataclasses import dataclass, field
 
 
+@dataclass
+class SellRecord:
+    """Individual sell transaction record from FIFO matching.
+
+    Why: Per-trade P&L data is needed for distribution analysis.
+         Aggregated win/loss stats hide the distribution shape —
+         histograms reveal skewness and fat tails.
+    How: Extracted from FIFO matching results during trade stats computation
+         and stored on both ``TradeStats`` and ``PortfolioTradeStats``.
+
+    Attributes
+    ----------
+    symbol : str
+        Ticker symbol of the sold position.
+    sell_date : str
+        Sell execution date in ``YYYY-MM-DD`` format.
+        Empty string when the date could not be parsed.
+    pnl_jpy : float
+        Realized profit/loss for this individual sell transaction in JPY.
+    holding_days : int
+        Calendar days held before selling (average across consumed lots).
+        Zero when date information is unavailable.
+    """
+
+    symbol: str
+    sell_date: str  # YYYY-MM-DD
+    pnl_jpy: float  # realized P&L in JPY
+    holding_days: int  # days held before selling
+
+
 class ConfidenceLevel(enum.StrEnum):
     """Data confidence level for behavior insights.
 
@@ -73,6 +103,7 @@ class TradeStats:
     loss_count: int = 0
     avg_hold_days: float | None = None
     confidence: ConfidenceLevel = ConfidenceLevel.INSUFFICIENT
+    sell_records: list[SellRecord] = field(default_factory=list)
 
     @property
     def total_trades(self) -> int:
@@ -144,6 +175,7 @@ class PortfolioTradeStats:
     avg_hold_days: float | None = None
     by_symbol: dict[str, TradeStats] = field(default_factory=dict)
     confidence: ConfidenceLevel = ConfidenceLevel.INSUFFICIENT
+    all_sell_records: list[SellRecord] = field(default_factory=list)
 
     @property
     def total_trades(self) -> int:

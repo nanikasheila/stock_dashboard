@@ -16,7 +16,7 @@ Public API
 Re-exports for convenience (so callers can do
 ``from components.dl_behavior import BehaviorInsight``):
     ``BehaviorInsight``, ``ConfidenceLevel``, ``PortfolioTimingInsight``,
-    ``PortfolioTradeStats``, ``StyleMetrics``, ``TradeStats``.
+    ``PortfolioTradeStats``, ``SellRecord``, ``StyleMetrics``, ``TradeStats``.
 """
 
 from __future__ import annotations
@@ -54,6 +54,7 @@ from src.core.behavior import (
     ConfidenceLevel,
     PortfolioTimingInsight,
     PortfolioTradeStats,
+    SellRecord,
     StyleMetrics,
     StyleProfile,
     TradeStats,
@@ -397,6 +398,7 @@ __all__ = [
     "ConfidenceLevel",
     "PortfolioTimingInsight",
     "PortfolioTradeStats",
+    "SellRecord",
     "StyleMetrics",
     "StyleProfile",
     "TradeStats",
