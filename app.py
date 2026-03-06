@@ -840,9 +840,10 @@ if not history_df.empty:
         st.markdown(_risk_card("Calmar", f"{risk['calmar_ratio']:.2f}"), unsafe_allow_html=True)
 
 # --- ベンチマーク超過リターン ---
+_bench_series = None
 if benchmark_symbol and not history_df.empty:
-    _bench_for_excess = get_benchmark_series(benchmark_symbol, history_df, period)
-    _excess = compute_benchmark_excess(history_df, _bench_for_excess)
+    _bench_series = get_benchmark_series(benchmark_symbol, history_df, period)
+    _excess = compute_benchmark_excess(history_df, _bench_series)
     if _excess is not None:
         st.markdown('<div class="kpi-spacer"></div>', unsafe_allow_html=True)
         _ex_color = "#4ade80" if _excess["excess_return_pct"] >= 0 else "#f87171"
@@ -1252,6 +1253,9 @@ with _tab_insights:
         total_value=total_value,
         unrealized_pnl=unrealized_pnl,
         realized_pnl=realized_pnl,
+        history_df=history_df if not history_df.empty else None,
+        benchmark_series=_bench_series,
+        benchmark_label=benchmark_label,
         behavior_insight=_behavior_insight,
         timing_insight=_timing_insight,
         style_profile=_style_profile,

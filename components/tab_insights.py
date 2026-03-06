@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import streamlit as st
 
@@ -33,6 +34,13 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parents[1])
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from state_keys import SK
+
+from components.dl_analytics import (
+    compute_benchmark_excess,
+    compute_monthly_seasonality,
+    compute_rolling_sharpe_trend,
+)
 from src.core.behavior.models import (
     BehaviorInsight,
     BiasSignal,
@@ -40,6 +48,9 @@ from src.core.behavior.models import (
     PortfolioTimingInsight,
     StyleProfile,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 # ---------------------------------------------------------------------------
 # Confidence-level UI helpers
@@ -485,10 +496,30 @@ def _render_bias_signals(biases: list[BiasSignal]) -> None:
                 st.caption(f"  • {note}")
 
 
+_MONTH_NAMES_JA = {
+    1: "1月",
+    2: "2月",
+    3: "3月",
+    4: "4月",
+    5: "5月",
+    6: "6月",
+    7: "7月",
+    8: "8月",
+    9: "9月",
+    10: "10月",
+    11: "11月",
+    12: "12月",
+}
+
+
 def _render_long_horizon_section(
     total_value: float,
     realized_pnl: float,
     unrealized_pnl: float,
+    *,
+    history_df: pd.DataFrame | None = None,
+    benchmark_series: pd.Series | None = None,
+    benchmark_label: str = "ベンチマーク",
 ) -> None:
     """長期ホライゾンインサイトセクションを描画する.
 
@@ -500,9 +531,15 @@ def _render_long_horizon_section(
         実現損益（円）。累積リターン計算に使用する。
     unrealized_pnl:
         含み損益（円）。現在のポートフォリオ状況の把握に使用する。
+    history_df:
+        build_portfolio_history() の出力。None の場合は基本指標のみ表示する。
+    benchmark_series:
+        get_benchmark_series() の出力（正規化済み）。None の場合はベンチマーク比較を省略。
+    benchmark_label:
+        ベンチマーク名称（UI 表示用）。
     """
     st.markdown("#### 🌅 長期ホライゾンインサイト")
-    st.caption("長期視点でのポートフォリオ評価・目標達成予測・リスク分散状況を提供します。")
+    st.caption("長期視点でのポートフォリオ評価・季節性パターン・ベンチマーク比較・Sharpe安定性を提供します。")
 
     if total_value <= 0:
         st.info(
@@ -512,7 +549,9 @@ def _render_long_horizon_section(
         )
         return
 
-    # --- 将来: 長期インサイトの表示エリア（現在は基本指標のみ） ---
+    # ------------------------------------------------------------------ #
+    # 基本指標（既存）
+    # ------------------------------------------------------------------ #
     _total_pnl = realized_pnl + unrealized_pnl
     _col1, _col2, _col3 = st.columns(3)
     with _col1:
@@ -527,10 +566,456 @@ def _render_long_horizon_section(
     with _col3:
         st.metric(label="実現損益", value=f"¥{realized_pnl:,.0f}")
 
-    st.info(
-        "⚙️ FIRE試算・長期目標達成率・リスク調整後リターンの詳細分析は次のフェーズで追加されます。",
-        icon=None,
+    if history_df is None or history_df.empty:
+        st.info(
+            "⚙️ 履歴データが蓄積されると、季節性・ベンチマーク比較・Sharpe安定性シグナルが表示されます。",
+            icon=None,
+        )
+        return
+
+    st.markdown("")
+
+    # ------------------------------------------------------------------ #
+    # A. 月次季節性パターン
+    # ------------------------------------------------------------------ #
+    _render_seasonality_subsection(history_df)
+
+    st.markdown("")
+
+    # ------------------------------------------------------------------ #
+    # B. ベンチマーク比較
+    # ------------------------------------------------------------------ #
+    _render_benchmark_comparison_subsection(history_df, benchmark_series, benchmark_label)
+
+    st.markdown("")
+
+    # ------------------------------------------------------------------ #
+    # C. ローリングSharpe 安定性シグナル
+    # ------------------------------------------------------------------ #
+    _render_sharpe_stability_subsection(history_df)
+
+
+def _render_seasonality_subsection(history_df: pd.DataFrame) -> None:
+    """月次季節性パターンを描画する.
+
+    Why: 暦月ごとのリターン傾向を把握することで、ポジション調整の
+         参考情報として活用できる。
+    How: compute_monthly_seasonality() で月次平均リターンと年間リターンを算出し、
+         コンパクトなテーブル形式で表示する。12ヶ月未満のデータでは
+         gracefully degrade してデータ不足メッセージを表示する。
+    """
+    st.markdown("**📅 月次季節性パターン**")
+    seasonality = compute_monthly_seasonality(history_df)
+
+    months_of_data = seasonality["months_of_data"]
+
+    if months_of_data == 0:
+        st.caption("履歴データが見つかりません。")
+        return
+
+    if not seasonality["has_sufficient_data"]:
+        st.caption(
+            f"⚠️ 現在 **{months_of_data}ヶ月** 分のデータがあります。"
+            " 季節性パターンの信頼性を高めるには **12ヶ月以上** 必要です。"
+        )
+
+    monthly_avg = seasonality["monthly_avg_returns"]
+    if monthly_avg:
+        # Build a 2-row × 6-col display (Jan-Jun / Jul-Dec)
+        st.caption("月次平均リターン（全期間の月次リターン平均）")
+        _rows_monthly = []
+        for m in range(1, 13):
+            if m in monthly_avg:
+                pct = monthly_avg[m]
+                sign = "+" if pct >= 0 else ""
+                _rows_monthly.append({"月": _MONTH_NAMES_JA[m], "平均リターン": f"{sign}{pct:.2f}%"})
+        if _rows_monthly:
+            # Display in two rows of 6 columns each for compactness
+            _half = len(_rows_monthly) // 2
+            _first_half = _rows_monthly[:_half] if _half > 0 else _rows_monthly
+            _second_half = _rows_monthly[_half:] if _half > 0 else []
+
+            _cols_a = st.columns(len(_first_half)) if _first_half else []
+            for _ci, _row in enumerate(_first_half):
+                with _cols_a[_ci]:
+                    _v = float(_row["平均リターン"].replace("%", "").replace("+", ""))
+                    _color = "normal" if _v >= 0 else "inverse"
+                    st.metric(_row["月"], _row["平均リターン"], delta_color=_color)
+
+            if _second_half:
+                _cols_b = st.columns(len(_second_half))
+                for _ci, _row in enumerate(_second_half):
+                    with _cols_b[_ci]:
+                        _v = float(_row["平均リターン"].replace("%", "").replace("+", ""))
+                        _color = "normal" if _v >= 0 else "inverse"
+                        st.metric(_row["月"], _row["平均リターン"], delta_color=_color)
+
+    year_returns = seasonality["year_returns"]
+    if year_returns:
+        st.caption("年次リターン（月次リターンの複利合算）")
+        _yr_cols = st.columns(min(len(year_returns), 5))
+        for _yi, (yr, ret) in enumerate(sorted(year_returns.items())):
+            with _yr_cols[_yi % len(_yr_cols)]:
+                _yr_sign = "+" if ret >= 0 else ""
+                st.metric(f"{yr}年", f"{_yr_sign}{ret:.1f}%")
+
+
+def _render_benchmark_comparison_subsection(
+    history_df: pd.DataFrame,
+    benchmark_series: pd.Series | None,
+    benchmark_label: str,
+) -> None:
+    """ベンチマーク比較サブセクションを描画する.
+
+    Why: ポートフォリオのリターンをベンチマーク（市場インデックス）と
+         比較することで、超過リターン（アルファ）を定量化できる。
+    How: compute_benchmark_excess() でポートフォリオとベンチマークの
+         期間リターンを算出し、3列形式で表示する。ベンチマーク未設定の場合は
+         サイドバーで設定するよう案内する。
+    """
+    st.markdown("**📏 ベンチマーク比較**")
+
+    if benchmark_series is None:
+        st.caption(
+            "ベンチマークが設定されていません。"
+            " サイドバーの「📏 ベンチマーク比較」でベンチマークを選択すると比較が表示されます。"
+        )
+        return
+
+    excess = compute_benchmark_excess(history_df, benchmark_series)
+    if excess is None:
+        st.caption("ベンチマークとのリターン比較に十分なデータがありません。")
+        return
+
+    bm_disp = benchmark_label if benchmark_label and benchmark_label != "なし" else "ベンチマーク"
+
+    _bc1, _bc2, _bc3 = st.columns(3)
+    with _bc1:
+        _pf_r = excess["portfolio_return_pct"]
+        st.metric(
+            "PFリターン（期間）",
+            f"{_pf_r:+.2f}%",
+            help="選択期間のポートフォリオ総リターン",
+        )
+    with _bc2:
+        _bm_r = excess["benchmark_return_pct"]
+        st.metric(
+            f"{bm_disp}リターン",
+            f"{_bm_r:+.2f}%",
+            help=f"同期間の {bm_disp} リターン（ポートフォリオ開始日を基準に正規化）",
+        )
+    with _bc3:
+        _ex_r = excess["excess_return_pct"]
+        _ex_sign = "+" if _ex_r >= 0 else ""
+        _ex_note = "市場平均超過" if _ex_r >= 0 else "市場平均未満"
+        st.metric(
+            "超過リターン（α）",
+            f"{_ex_sign}{_ex_r:.2f}%",
+            delta=_ex_note,
+            help="PFリターン − ベンチマークリターン。正値が市場平均超過（アルファ）。",
+        )
+
+
+def _render_sharpe_stability_subsection(history_df: pd.DataFrame) -> None:
+    """ローリングSharpe安定性シグナルを描画する.
+
+    Why: 単体のSharpe比よりもその時系列トレンドを見ることで、
+         ポートフォリオのリスク調整後リターンが改善しているか劣化しているかを
+         早期に把握できる。
+    How: compute_rolling_sharpe_trend() で直近60日間のローリングSharpe比と
+         30日前の値を比較し、「改善傾向 / 安定 / 悪化傾向」のシグナルを返す。
+    """
+    st.markdown("**📈 Sharpe安定性シグナル**")
+
+    trend_info = compute_rolling_sharpe_trend(history_df, window=60, trend_points=30)
+
+    if trend_info["trend"] == "insufficient":
+        st.caption("⚠️ ローリングSharpe比を計算するにはデータが不足しています。 （60日間以上の履歴が必要です）")
+        return
+
+    _trend_emoji = {
+        "improving": "🟢",
+        "stable": "🟡",
+        "declining": "🔴",
+    }
+    emoji = _trend_emoji.get(trend_info["trend"], "⚪")
+
+    _sc1, _sc2, _sc3 = st.columns(3)
+    with _sc1:
+        st.metric(
+            "ローリングSharpe（直近60日）",
+            f"{trend_info['latest']:.2f}",
+            help="直近60日間のリターンで算出したSharpe比（年率換算、無リスクレート0.5%想定）",
+        )
+    with _sc2:
+        st.metric(
+            "30日前との変化",
+            f"{trend_info['delta']:+.2f}",
+            delta=f"{emoji} {trend_info['trend_ja']}",
+            help="30日前のローリングSharpe比との差分。±0.2以上で傾向判定。",
+        )
+    with _sc3:
+        st.metric(
+            "30日前のSharpe",
+            f"{trend_info['prev']:.2f}",
+            help="比較基準点（30日前）のローリングSharpe比",
+        )
+
+    st.caption(trend_info["description"])
+
+
+# ---------------------------------------------------------------------------
+# AI レトロスペクティブ（任意実行）― ヘルパー関数
+# ---------------------------------------------------------------------------
+
+_RETRO_PRIVACY_NOTICE = (
+    "このボタンを押すと、以下のデータが **GitHub Copilot** に送信されます。 "
+    "個人情報・口座情報・証券コードの実名は含まれません。 "
+    "送信内容は下の「送信データプレビュー」で事前確認できます。 "
+    "実行は任意です。キャンセルしたい場合はこのエクスパンダーを閉じてください。"
+)
+
+
+def _build_retro_payload(
+    behavior: BehaviorInsight,
+    timing: PortfolioTimingInsight,
+    style_profile: StyleProfile | None,
+    style_biases: list[BiasSignal] | None,
+    positions: list[dict],
+    realized_pnl: float,
+    unrealized_pnl: float,
+    total_value: float,
+) -> dict[str, Any]:
+    """ローカルで決定論的なレトロスペクティブ用サマリーペイロードを構築する.
+
+    Why: LLM に送信する前に、何が送られるかをユーザーが確認できるよう、
+         UI レンダリングとは独立した純粋な辞書として構築する。
+    How: 既存の behavior/timing/style オブジェクトから主要指標を抽出し、
+         銘柄コードを「N銘柄」形式に置き換えてプライバシーを保護する。
+    """
+    ts = behavior.trade_stats
+    wl = behavior.win_loss
+    hp = behavior.holding_period
+
+    payload: dict[str, Any] = {
+        "total_buy": ts.total_buy_count if ts else 0,
+        "total_sell": ts.total_sell_count if ts else 0,
+        "symbols_traded": len(ts.symbols_traded) if ts and ts.symbols_traded else 0,
+        "win_rate": round(wl.win_rate * 100, 1) if wl and wl.win_rate is not None else None,
+        "profit_factor": round(wl.profit_factor, 2) if wl and wl.profit_factor is not None else None,
+        "avg_hold_days": round(hp.median_days, 1) if hp and hp.median_days is not None else None,
+        "short_term_ratio": round(hp.short_term_ratio * 100, 1) if hp and hp.short_term_ratio is not None else None,
+        "realized_pnl_jpy": int(realized_pnl),
+        "unrealized_pnl_jpy": int(unrealized_pnl),
+        "total_value_jpy": int(total_value),
+        "positions_held": len(positions),
+        "avg_buy_timing": round(timing.avg_buy_timing_score, 1) if timing.avg_buy_timing_score is not None else None,
+        "avg_sell_timing": round(timing.avg_sell_timing_score, 1) if timing.avg_sell_timing_score is not None else None,
+        "adi_score": round(style_profile.adi_score, 1)
+        if style_profile and style_profile.adi_score is not None
+        else None,
+        "adi_label": style_profile.label if style_profile else None,
+        "bias_signals": [b.title for b in style_biases] if style_biases else [],
+        "confidence": behavior.confidence,
+    }
+    return payload
+
+
+def _build_retro_prompt(payload: dict[str, Any]) -> str:
+    """レトロスペクティブ用LLMプロンプトをペイロードから構築する.
+
+    Why: プロンプトはペイロードから決定論的に生成され、ユーザーが
+         送信内容を事前確認できるようにする。
+    How: 主要指標を箇条書きで列挙し、日本語での振り返りレポートを要求する。
+    """
+    total_trades = payload["total_buy"] + payload["total_sell"]
+    pnl_sign = "+" if payload["realized_pnl_jpy"] >= 0 else ""
+    upnl_sign = "+" if payload["unrealized_pnl_jpy"] >= 0 else ""
+
+    lines = [
+        "あなたは個人投資家のパフォーマンスコーチです。",
+        "以下の匿名化された投資行動サマリーに基づき、日本語で振り返りレポートを作成してください。",
+        "",
+        "## 投資行動サマリー",
+        f"- 総取引数: {total_trades}件（買{payload['total_buy']} / 売{payload['total_sell']}）",
+        f"- 取引銘柄数: {payload['symbols_traded']}銘柄",
+        f"- 現在保有銘柄数: {payload['positions_held']}銘柄",
+    ]
+
+    if payload["win_rate"] is not None:
+        lines.append(f"- 勝率: {payload['win_rate']}%")
+    if payload["profit_factor"] is not None:
+        lines.append(f"- プロフィットファクター: {payload['profit_factor']}")
+    if payload["avg_hold_days"] is not None:
+        lines.append(f"- 平均保有期間（中央値）: {payload['avg_hold_days']}日")
+    if payload["short_term_ratio"] is not None:
+        lines.append(f"- 短期売買比率（30日以内）: {payload['short_term_ratio']}%")
+
+    lines += [
+        f"- 実現損益: {pnl_sign}{payload['realized_pnl_jpy']:,}円",
+        f"- 含み損益: {upnl_sign}{payload['unrealized_pnl_jpy']:,}円",
+    ]
+
+    if payload["avg_buy_timing"] is not None:
+        lines.append(f"- 平均エントリータイミングスコア: {payload['avg_buy_timing']}/100")
+    if payload["avg_sell_timing"] is not None:
+        lines.append(f"- 平均エグジットタイミングスコア: {payload['avg_sell_timing']}/100")
+    if payload["adi_score"] is not None:
+        label_map = {
+            "aggressive": "積極型",
+            "defensive": "守備型",
+            "balanced": "バランス型",
+        }
+        adi_label = label_map.get(payload["adi_label"] or "", payload["adi_label"] or "")
+        lines.append(f"- 投資スタイルスコア（ADI）: {payload['adi_score']}/100（{adi_label}）")
+    if payload["bias_signals"]:
+        lines.append(f"- 検出されたバイアス: {', '.join(payload['bias_signals'])}")
+
+    lines += [
+        "",
+        "## 指示",
+        "以下の構成でレポートを作成してください。",
+        "1. **良かった点**: 数値データから読み取れる強みを2〜3点",
+        "2. **改善点**: 気をつけるべきパターンや課題を2〜3点",
+        "3. **次のアクション**: 具体的な改善提案を1〜2点",
+        "",
+        "回答は日本語で、箇条書きを使い、簡潔に（合計400字程度）まとめてください。",
+        "銘柄コードや個人情報は一切含まれていないため、内容に基づいて分析してください。",
+    ]
+
+    return "\n".join(lines)
+
+
+def _render_retrospective_section(
+    *,
+    behavior: BehaviorInsight,
+    timing: PortfolioTimingInsight,
+    style_profile: StyleProfile | None,
+    style_biases: list[BiasSignal] | None,
+    positions: list[dict],
+    realized_pnl: float,
+    unrealized_pnl: float,
+    total_value: float,
+) -> None:
+    """AI レトロスペクティブ（任意実行）セクションを描画する.
+
+    Why: ユーザーが明示的にオプトインしたときだけ LLM 呼び出しを行う。
+         自動呼び出しは一切しない。
+    How: ペイロードをローカルで構築 → ユーザーへの事前通知 → ボタン押下で
+         copilot_client.call() を起動 → 結果をセッション state に保存。
+    """
+    # --- セッション state の初期化 ---
+    if SK.RETRO_RESULT not in st.session_state:
+        st.session_state[SK.RETRO_RESULT] = None
+    if SK.RETRO_ERROR not in st.session_state:
+        st.session_state[SK.RETRO_ERROR] = None
+
+    # --- ペイロードとプロンプトをローカルで確定 ---
+    payload = _build_retro_payload(
+        behavior=behavior,
+        timing=timing,
+        style_profile=style_profile,
+        style_biases=style_biases,
+        positions=positions,
+        realized_pnl=realized_pnl,
+        unrealized_pnl=unrealized_pnl,
+        total_value=total_value,
     )
+    prompt = _build_retro_prompt(payload)
+
+    # --- データ量チェック（最低限のトレード数がないと意味がない） ---
+    total_trades = payload["total_buy"] + payload["total_sell"]
+
+    st.markdown("#### 🤖 AI レトロスペクティブ（任意実行）")
+    st.caption(
+        "蓄積されたトレード行動・スタイル・タイミングデータをもとに、"
+        "AI が投資行動の振り返りレポートを生成します。"
+        "実行は任意です。"
+    )
+
+    if total_trades == 0:
+        st.info("📭 レトロスペクティブを生成するには、売買履歴が必要です。取引を記録すると利用できます。")
+        return
+
+    # --- プライバシー通知 ---
+    st.warning(_RETRO_PRIVACY_NOTICE, icon="🔒")
+
+    # --- 送信データプレビュー ---
+    with st.expander("📋 送信データプレビュー（クリックして確認）", expanded=False):
+        st.caption("以下のテキストのみが Copilot に送信されます。銘柄コード・個人情報は含まれません。")
+        st.code(prompt, language="markdown")
+
+    # --- 実行・クリアボタン ---
+    col_run, col_clear = st.columns([2, 1])
+    with col_run:
+        run_clicked = st.button(
+            "▶ レトロスペクティブを実行",
+            key="retro_run_btn",
+            type="primary",
+            help="GitHub Copilot に接続して振り返りレポートを生成します。",
+        )
+    with col_clear:
+        clear_clicked = st.button(
+            "🗑 クリア",
+            key="retro_clear_btn",
+            help="生成済みのレポートを削除します。",
+        )
+
+    if clear_clicked:
+        st.session_state[SK.RETRO_RESULT] = None
+        st.session_state[SK.RETRO_ERROR] = None
+        st.rerun()
+
+    if run_clicked:
+        # --- 遅延インポート: importlib.import_module を使い sys.modules 経由で解決する ---
+        # Why: from components import copilot_client はパッケージ属性キャッシュを参照するため、
+        #      テスト時の sys.modules パッチが効かない場合がある。
+        #      importlib.import_module は sys.modules を直接参照し、パッチが確実に効く。
+        import importlib
+
+        try:
+            copilot_client = importlib.import_module("components.copilot_client")
+        except Exception:
+            st.session_state[SK.RETRO_RESULT] = None
+            st.session_state[SK.RETRO_ERROR] = "Copilot クライアントを読み込めませんでした。"
+        else:
+            if not copilot_client.is_available():
+                st.session_state[SK.RETRO_RESULT] = None
+                st.session_state[SK.RETRO_ERROR] = (
+                    "GitHub Copilot が利用できません。 Copilot CLI のインストールと認証を確認してください。"
+                )
+            else:
+                with st.spinner("Copilot でレポートを生成中…"):
+                    try:
+                        result = copilot_client.call(
+                            prompt,
+                            timeout=90,
+                            source="insight_retrospective",
+                        )
+                    except Exception as exc:
+                        result = None
+                        st.session_state[SK.RETRO_ERROR] = f"エラーが発生しました: {exc}"
+                    else:
+                        if result is None:
+                            st.session_state[SK.RETRO_ERROR] = (
+                                "Copilot から応答を取得できませんでした。しばらく後に再試行してください。"
+                            )
+                        else:
+                            st.session_state[SK.RETRO_RESULT] = result
+                            st.session_state[SK.RETRO_ERROR] = None
+
+    # --- 結果 / エラー表示 ---
+    retro_result: str | None = st.session_state.get(SK.RETRO_RESULT)
+    retro_error: str | None = st.session_state.get(SK.RETRO_ERROR)
+
+    if retro_error:
+        st.error(f"⚠️ {retro_error}")
+
+    if retro_result:
+        st.divider()
+        st.markdown("##### 📝 AI レトロスペクティブ レポート")
+        st.markdown(retro_result)
+        st.caption("※ このレポートは AI が生成したものです。投資判断の参考情報としてご利用ください。")
 
 
 # ---------------------------------------------------------------------------
@@ -544,6 +1029,9 @@ def render_insights_tab(
     total_value: float,
     unrealized_pnl: float,
     realized_pnl: float,
+    history_df: pd.DataFrame | None = None,
+    benchmark_series: pd.Series | None = None,
+    benchmark_label: str = "ベンチマーク",
     behavior_insight: BehaviorInsight | None = None,
     timing_insight: PortfolioTimingInsight | None = None,
     style_profile: StyleProfile | None = None,
@@ -563,6 +1051,14 @@ def render_insights_tab(
         含み損益（円）。長期インサイトセクションで使用する。
     realized_pnl:
         実現損益（円）。トレード統計・長期インサイトセクションで使用する。
+    history_df:
+        build_portfolio_history() の出力。長期インサイトの季節性・Sharpe分析に使用する。
+        None の場合は長期インサイトの基本指標のみ表示する。
+    benchmark_series:
+        get_benchmark_series() の出力（正規化済み）。長期インサイトのベンチマーク比較に使用する。
+        None の場合はベンチマーク比較を省略する。
+    benchmark_label:
+        ベンチマーク名称（UI 表示用）。
     behavior_insight:
         ``load_behavior_insight()`` から得た ``BehaviorInsight`` オブジェクト。
         ``None`` の場合は空の ``BehaviorInsight`` を使用する。
@@ -626,4 +1122,24 @@ def render_insights_tab(
             total_value=total_value,
             realized_pnl=realized_pnl,
             unrealized_pnl=unrealized_pnl,
+            history_df=history_df,
+            benchmark_series=benchmark_series,
+            benchmark_label=benchmark_label,
+        )
+
+    st.divider()
+
+    # ------------------------------------------------------------------ #
+    # セクション 5: AI レトロスペクティブ（任意実行）
+    # ------------------------------------------------------------------ #
+    with st.expander("🤖 AI レトロスペクティブ（任意実行）", expanded=False):
+        _render_retrospective_section(
+            behavior=_behavior,
+            timing=_timing,
+            style_profile=style_profile,
+            style_biases=style_biases,
+            positions=positions,
+            realized_pnl=realized_pnl,
+            unrealized_pnl=unrealized_pnl,
+            total_value=total_value,
         )
