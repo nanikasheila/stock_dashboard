@@ -38,6 +38,15 @@ from components.llm_cache import (
     _insights_cache,
     _summary_cache,
     _unified_cache,
+    clear_cache,  # noqa: F401 — re-export
+    clear_health_summary_cache,  # noqa: F401 — re-export
+    clear_insights_cache,  # noqa: F401 — re-export
+    clear_summary_cache,  # noqa: F401 — re-export
+    clear_unified_cache,  # noqa: F401 — re-export
+    get_cache_info,  # noqa: F401 — re-export
+    get_health_summary_cache_info,  # noqa: F401 — re-export
+    get_summary_cache_info,  # noqa: F401 — re-export
+    get_unified_cache_info,  # noqa: F401 — re-export
 )
 
 logger = logging.getLogger(__name__)
