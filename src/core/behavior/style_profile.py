@@ -30,7 +30,7 @@ from src.core.behavior.models import (
     StyleMetrics,
     StyleProfile,
 )
-from src.core.behavior.trade_stats import min_confidence
+from src.core.behavior.trade_stats import _CONFIDENCE_ORDER, min_confidence
 from src.core.portfolio.concentration import compute_hhi
 
 if TYPE_CHECKING:
@@ -358,7 +358,7 @@ def compute_style_profile(
     if (
         annual_vol_pct is not None
         and overall_confidence == ConfidenceLevel.LOW
-        and behavior_conf >= ConfidenceLevel.MEDIUM  # type: ignore[operator]
+        and _CONFIDENCE_ORDER.get(behavior_conf, 0) >= _CONFIDENCE_ORDER.get(ConfidenceLevel.MEDIUM, 0)
     ):
         overall_confidence = ConfidenceLevel.MEDIUM
 

@@ -10,6 +10,7 @@ Usage
 
 from __future__ import annotations
 
+import html as _html
 import sys
 import time
 from pathlib import Path
@@ -912,10 +913,11 @@ if not history_df.empty:
             _top_html += '<div class="kpi-label">🟢 本日 Best</div>'
             for p in _top:
                 _c = "#4ade80" if p["change_pct"] >= 0 else "#f87171"
+                _sym = _html.escape(str(p["symbol"]))
                 _top_html += (
                     f'<div style="display:flex; justify-content:space-between;'
                     f' padding:3px 0; font-size:0.9rem;">'
-                    f"<span>{p['symbol']}</span>"
+                    f"<span>{_sym}</span>"
                     f'<span style="color:{_c}; font-weight:600;">'
                     f"{p['change_pct']:+.2f}%</span></div>"
                 )
@@ -926,10 +928,11 @@ if not history_df.empty:
             _worst_html += '<div class="kpi-label">🔴 本日 Worst</div>'
             for p in _worst:
                 _c = "#4ade80" if p["change_pct"] >= 0 else "#f87171"
+                _sym = _html.escape(str(p["symbol"]))
                 _worst_html += (
                     f'<div style="display:flex; justify-content:space-between;'
                     f' padding:3px 0; font-size:0.9rem;">'
-                    f"<span>{p['symbol']}</span>"
+                    f"<span>{_sym}</span>"
                     f'<span style="color:{_c}; font-weight:600;">'
                     f"{p['change_pct']:+.2f}%</span></div>"
                 )

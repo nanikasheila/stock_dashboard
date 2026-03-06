@@ -642,7 +642,10 @@ def _render_seasonality_subsection(history_df: pd.DataFrame) -> None:
             _cols_a = st.columns(len(_first_half)) if _first_half else []
             for _ci, _row in enumerate(_first_half):
                 with _cols_a[_ci]:
-                    _v = float(_row["平均リターン"].replace("%", "").replace("+", ""))
+                    try:
+                        _v = float(_row["平均リターン"].replace("%", "").replace("+", ""))
+                    except (ValueError, AttributeError):
+                        _v = 0.0
                     _color = "normal" if _v >= 0 else "inverse"
                     st.metric(_row["月"], _row["平均リターン"], delta_color=_color)
 
@@ -650,7 +653,10 @@ def _render_seasonality_subsection(history_df: pd.DataFrame) -> None:
                 _cols_b = st.columns(len(_second_half))
                 for _ci, _row in enumerate(_second_half):
                     with _cols_b[_ci]:
-                        _v = float(_row["平均リターン"].replace("%", "").replace("+", ""))
+                        try:
+                            _v = float(_row["平均リターン"].replace("%", "").replace("+", ""))
+                        except (ValueError, AttributeError):
+                            _v = 0.0
                         _color = "normal" if _v >= 0 else "inverse"
                         st.metric(_row["月"], _row["平均リターン"], delta_color=_color)
 

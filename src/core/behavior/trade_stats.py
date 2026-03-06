@@ -644,8 +644,7 @@ def compute_style_metrics(
     confidence = portfolio_stats.confidence
     if total_trades < _MIN_SELLS_MEDIUM:
         confidence = min_confidence(confidence, ConfidenceLevel.LOW)
-        if total_trades < _MIN_SELLS_MEDIUM:
-            notes.append(f"Style metrics based on {total_trades} trade(s) — treat as indicative only.")
+        notes.append(f"Style metrics based on {total_trades} trade(s) — treat as indicative only.")
 
     return StyleMetrics(
         trade_frequency=trade_frequency,
