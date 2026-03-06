@@ -1,6 +1,11 @@
 ---
 name: initialize-project
-description: 新規プロジェクトに .github/ を導入した際の初期設定を行う。settings.json の作成とプロジェクト固有値の設定を対話的にガイドする。
+description: >-
+  新規プロジェクトへ .github/ フレームワークをコピーした後の初期設定を完了させる。
+  「プロジェクトを初期化して」「settings.json を設定して」「新しいプロジェクトにフレームワークを導入した」
+  「初期設定をガイドして」「.github をコピーしたので設定して」と言った場合にトリガーする。
+  settings.json の作成とプロジェクト固有値（チーム名・リポジトリ・モデル設定等）を対話的に設定する。
+  assess-project とは異なり、設定ファイルを実際に生成・書き込む。
 ---
 
 # プロジェクト初期設定
@@ -98,7 +103,7 @@ URL から `owner` と `repo` を抽出する。
     "developer": { "model": "<個別モデル名（省略可）>" },
     "reviewer": { "model": "<個別モデル名（省略可）>" },
     "writer": { "model": "<個別モデル名（省略可）>" },
-    "manager": { "model": "<個別モデル名（省略可）>" },
+    "planner": { "model": "<個別モデル名（省略可）>" },
     "architect": { "model": "<個別モデル名（省略可）>" },
     "assessor": { "model": "<個別モデル名（省略可）>" }
   }
@@ -122,7 +127,7 @@ URL から `owner` と `repo` を抽出する。
 - `agents/developer.agent.md`
 - `agents/reviewer.agent.md`
 - `agents/writer.agent.md`
-- `agents/manager.agent.md`
+- `agents/planner.agent.md`
 - `agents/architect.agent.md`
 
 ### 6. .gitignore の生成

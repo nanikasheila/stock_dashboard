@@ -91,26 +91,29 @@ sandbox ──► abandoned   ※ sandbox は他の Maturity に昇格不可
 
 ### 原則
 
-**オーケストレーター（トップレベル Copilot Chat）のみが `flow_state` と `gates` を書き換える権限を持つ。**
+**オーケストレーター（トップレベル Copilot CLI）のみが `flow_state` と `gates` を書き換える権限を持つ。**
 各エージェントは `artifacts` 内の自セクションのみに書き込む。
 
 ### 権限マトリクス
 
-| フィールド | orchestrator | manager | architect | developer | reviewer | writer |
-|---|---|---|---|---|---|---|
-| `flow_state` | **write** | — | — | — | — | — |
-| `gates.*` | **write** | — | — | — | — | — |
-| `maturity` | **write** | — | — | — | — | — |
-| `cycle` | **write** | — | — | — | — | — |
-| `artifacts.impact_analysis` | — | **write** | — | — | — | — |
-| `artifacts.architecture_decision` | — | — | **write** | — | — | — |
-| `artifacts.execution_plan` | — | **write** | — | — | — | — |
-| `artifacts.implementation` | — | — | — | **write** | — | — |
-| `artifacts.test_results` | — | — | — | **write** | — | — |
-| `artifacts.review_findings` | — | — | — | — | **write** | — |
-| `artifacts.documentation` | — | — | — | — | — | **write** |
-| `history` | **write** | — | — | — | — | — |
-| 全フィールド | read | read | read | read | read | read |
+| フィールド | orchestrator | planner | architect | developer | reviewer | writer | analyst | impact-analyst | test-designer | test-verifier |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `flow_state` | **write** | — | — | — | — | — | — | — | — | — |
+| `gates.*` | **write** | — | — | — | — | — | — | — | — | — |
+| `maturity` | **write** | — | — | — | — | — | — | — | — | — |
+| `cycle` | **write** | — | — | — | — | — | — | — | — | — |
+| `artifacts.requirements` | — | — | — | — | — | — | **write** | — | — | — |
+| `artifacts.impact_analysis` | — | — | — | — | — | — | — | **write** | — | — |
+| `artifacts.architecture_decision` | — | — | **write** | — | — | — | — | — | — | — |
+| `artifacts.execution_plan` | — | **write** | — | — | — | — | — | — | — | — |
+| `artifacts.implementation` | — | — | — | **write** | — | — | — | — | — | — |
+| `artifacts.test_design` | — | — | — | — | — | — | — | — | **write** | — |
+| `artifacts.test_results` | — | — | — | **write** | — | — | — | — | — | — |
+| `artifacts.test_verification` | — | — | — | — | — | — | — | — | — | **write** |
+| `artifacts.review_findings` | — | — | — | — | **write** | — | — | — | — | — |
+| `artifacts.documentation` | — | — | — | — | — | **write** | — | — | — | — |
+| `history` | **write** | — | — | — | — | — | — | — | — | — |
+| 全フィールド | read | read | read | read | read | read | read | read | read | read |
 
 ## Gate 評価
 
