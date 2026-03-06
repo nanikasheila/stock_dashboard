@@ -12,6 +12,7 @@ render_holdings_tab(...)
 
 from __future__ import annotations
 
+import html as _html_mod
 import time
 
 import pandas as pd
@@ -162,7 +163,7 @@ def render_holdings_tab(
                 st.markdown(
                     f'<div class="kpi-card kpi-risk" style="text-align:center;">'
                     f'<span style="font-size:0.8rem; opacity:0.7;">{icon} {label}</span><br>'
-                    f'<span style="font-size:1.1rem; font-weight:600;">{alert["name"]}</span><br>'
+                    f'<span style="font-size:1.1rem; font-weight:600;">{_html_mod.escape(str(alert["name"]))}</span><br>'
                     f'<span style="font-size:0.85rem;">現在 {alert["current_pct"]:.1f}% '
                     f"→ 目標 {alert['target_pct']:.1f}%</span><br>"
                     f'<span style="font-size:1.0rem; font-weight:600; color:{color};">'

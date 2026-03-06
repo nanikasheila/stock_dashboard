@@ -151,7 +151,7 @@ def render_health_tab(
                 # Build detail HTML
                 detail_html = ""
                 for d in alert.get("details", []):
-                    detail_html += f'<div class="sell-alert-detail">• {d}</div>'
+                    detail_html += f'<div class="sell-alert-detail">• {_html_mod.escape(str(d))}</div>'
 
                 # LLM 分析コメントを付加
                 _alert_sym = alert.get("symbol", "")
@@ -159,7 +159,7 @@ def render_health_tab(
                 if _llm_sa:
                     _llm_text = _llm_sa.get("assessment", "")
                     if _llm_text:
-                        detail_html += f'<div class="sell-alert-ai">🤖 <strong>AI分析</strong>: {_llm_text}</div>'
+                        detail_html += f'<div class="sell-alert-ai">🤖 <strong>AI分析</strong>: {_html_mod.escape(str(_llm_text))}</div>'
 
                 pnl = alert.get("pnl_pct", 0)
                 pnl_color = "#4ade80" if pnl >= 0 else "#f87171"
@@ -192,11 +192,11 @@ def render_health_tab(
 
             _hcs_overview = _hc_llm_summary.get("overview", "")
             if _hcs_overview:
-                _hcs_html += f'<div class="health-summary-overview">{_hcs_overview}</div>'
+                _hcs_html += f'<div class="health-summary-overview">{_html_mod.escape(str(_hcs_overview))}</div>'
 
             _hcs_warning = _hc_llm_summary.get("risk_warning", "")
             if _hcs_warning:
-                _hcs_html += f'<div class="health-summary-warning">⚠️ <strong>リスク注意</strong>: {_hcs_warning}</div>'
+                _hcs_html += f'<div class="health-summary-warning">⚠️ <strong>リスク注意</strong>: {_html_mod.escape(str(_hcs_warning))}</div>'
 
             _hcs_assessments = _hc_llm_summary.get("stock_assessments", [])
             if _hcs_assessments:
@@ -219,8 +219,8 @@ def render_health_tab(
                     _hcs_html += (
                         f'<div class="health-summary-stock{_sa_level_class}">'
                         f'<div class="health-summary-stock-name">'
-                        f"{_sa_name} ({_sa_sym}){_action_badge}</div>"
-                        f'<div class="health-summary-stock-text">{_sa_assessment}</div>'
+                        f"{_html_mod.escape(str(_sa_name))} ({_html_mod.escape(str(_sa_sym))}){_action_badge}</div>"
+                        f'<div class="health-summary-stock-text">{_html_mod.escape(str(_sa_assessment))}</div>'
                         f"</div>"
                     )
 
@@ -357,7 +357,7 @@ def render_health_tab(
                             f'<div class="health-card health-card-{alert_level}">'
                             f'<div style="display:flex; justify-content:space-between; align-items:center;">'
                             f'<span style="font-weight:700; font-size:1.0rem;">'
-                            f"{pos['alert_emoji']} {pos['name']} ({pos['symbol']})</span>"
+                            f"{pos['alert_emoji']} {_html_mod.escape(str(pos['name']))} ({_html_mod.escape(str(pos['symbol']))})</span>"
                             f'<span style="font-size:0.85rem; opacity:0.8;">'
                             f"{pos['alert_label']}</span>"
                             f"</div>"

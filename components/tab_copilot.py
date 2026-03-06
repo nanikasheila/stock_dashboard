@@ -15,6 +15,8 @@ build_chat_context(...)
 
 from __future__ import annotations
 
+import html as _html_mod
+
 import streamlit as st
 from state_keys import SK
 
@@ -257,7 +259,7 @@ def render_copilot_tab(
             st.markdown(
                 f'<div class="copilot-chat-msg copilot-chat-msg-user">'
                 f'<div class="copilot-chat-msg-role">👤 あなた</div>'
-                f'<div class="copilot-chat-msg-text">{_msg["content"]}</div>'
+                f'<div class="copilot-chat-msg-text">{_html_mod.escape(str(_msg["content"]))}</div>'
                 f"</div>",
                 unsafe_allow_html=True,
             )
