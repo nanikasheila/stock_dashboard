@@ -358,9 +358,9 @@ def _trade_cost_jpy(
     4. shares * price * fx_rate (取引日レートで計算)
     5. shares * price * 現在のFXレート (フォールバック)
     """
-    sjpy = trade.get("settlement_jpy", 0) or 0
-    susd = trade.get("settlement_usd", 0) or 0
-    fx = trade.get("fx_rate", 0) or 0
+    sjpy = float(trade.get("settlement_jpy", 0) or 0)
+    susd = float(trade.get("settlement_usd", 0) or 0)
+    fx = float(trade.get("fx_rate", 0) or 0)
 
     if sjpy > 0 and susd > 0:
         # Mixed settlement (JPY + USD portions)
@@ -371,13 +371,13 @@ def _trade_cost_jpy(
         return susd * fx
     elif fx > 0:
         # FX rate available but no explicit settlement → use price * fx_rate
-        shares = trade.get("shares", 0)
-        price = trade.get("price", 0)
+        shares = float(trade.get("shares", 0) or 0)
+        price = float(trade.get("price", 0) or 0)
         return shares * price * fx
     else:
         # Final fallback: use current FX rate
-        shares = trade.get("shares", 0)
-        price = trade.get("price", 0)
+        shares = float(trade.get("shares", 0) or 0)
+        price = float(trade.get("price", 0) or 0)
         cur = trade.get("currency", "JPY")
         rate = global_fx_rates.get(cur, 1.0)
         return shares * price * rate

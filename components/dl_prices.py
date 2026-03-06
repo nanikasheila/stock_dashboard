@@ -25,7 +25,7 @@ from src.data import yahoo_client
 
 _CACHE_TTL_SECONDS = 4 * 3600  # 4 hours
 
-_PERIOD_MAP: dict[str, str | None] = {
+_PERIOD_MAP: dict[str, str] = {
     "1mo": "1mo",
     "3mo": "3mo",
     "6mo": "6mo",
