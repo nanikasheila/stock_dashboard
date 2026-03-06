@@ -23,6 +23,7 @@ render_insights_tab(...)
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -53,6 +54,8 @@ from src.core.behavior.models import (
 
 if TYPE_CHECKING:
     import pandas as pd
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Confidence-level UI helpers
@@ -437,6 +440,23 @@ def _render_style_profile_section(
     else:
         # Fallback: basic style info from BehaviorInsight
         _render_basic_style_section(positions, sm, ts)
+
+    # --- ADI トレンドチャート ---
+    try:
+        from components.charts import plot_style_trend
+        from src.data.history_store import load_style_history
+
+        _style_history = load_style_history(days_back=365)
+        if len(_style_history) >= 2:
+            st.markdown("#### 📈 ADI スコア推移")
+            _trend_fig = plot_style_trend(_style_history)
+            if _trend_fig is not None:
+                st.plotly_chart(_trend_fig, use_container_width=True)
+        elif len(_style_history) == 1:
+            st.caption("📊 データを蓄積中です。2日目以降にトレンドチャートが表示されます。")
+        # len == 0: 初回起動時 — 何も表示しない
+    except Exception as _trend_exc:
+        _logger.debug("Style trend chart skipped: %s", _trend_exc)
 
     st.markdown("")
 

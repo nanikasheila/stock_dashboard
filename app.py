@@ -1280,6 +1280,17 @@ with _tab_insights:
         _style_profile = StyleProfile.empty()
         _style_biases = []
 
+    # スタイルプロファイル日次スナップショット（冪等: 同日は上書き）
+    if _style_profile and _style_profile.confidence.value != "insufficient":
+        try:
+            from src.data.history_store import save_style_profile
+
+            save_style_profile(_style_profile.to_dict())
+        except Exception as _save_exc:
+            import logging as _logging
+
+            _logging.getLogger(__name__).debug("Style profile save skipped: %s", _save_exc)
+
     render_insights_tab(
         positions=positions,
         total_value=total_value,

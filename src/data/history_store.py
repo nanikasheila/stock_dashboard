@@ -617,3 +617,47 @@ def list_history_files(
         return []
 
     return [str(fp.resolve()) for fp in sorted(d.glob("*.json"), reverse=True)]
+
+
+def save_style_profile(
+    style_data: dict,
+    base_dir: str = "data/history",
+) -> str:
+    """Save daily style profile snapshot to JSON.
+
+    Why: ADI（攻め守り指数）の時系列推移を可視化するため、日次スナップショットを保存する。
+    How: save_market_context() と同一パターン。カテゴリ "style_profile"、ファイル名 "{YYYY-MM-DD}_style_profile.json"。
+         同日は上書き（冪等）。_sanitize() で NumPy/NaN 安全化。
+    """
+    today = date.today().isoformat()
+    now = datetime.now().isoformat(timespec="seconds")
+    filename = f"{today}_style_profile.json"
+
+    payload = {
+        "category": "style_profile",
+        "date": today,
+        "timestamp": now,
+        **style_data,
+        "_saved_at": now,
+    }
+
+    d = _history_dir("style_profile", base_dir)
+    path = d / filename
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
+
+    return str(path.resolve())
+
+
+def load_style_history(
+    days_back: int | None = None,
+    base_dir: str = "data/history",
+) -> list[dict]:
+    """Load style profile history sorted in ascending date order (for charts).
+
+    Why: トレンドチャートは古い→新しいの時系列で描画するため昇順で返す。
+    How: load_history() を呼び出し、結果を反転（load_history は newest-first）。
+    """
+    results = load_history("style_profile", days_back=days_back, base_dir=base_dir)
+    results.reverse()  # oldest-first for charts
+    return results
