@@ -1136,15 +1136,21 @@ try:
         llm_model=llm_model,
         llm_cache_ttl=llm_cache_ttl_sec,
     )
-except Exception:
+except Exception as _exc:
+    import logging
+
+    logging.getLogger(__name__).warning("Economic news loading failed: %s", _exc)
     econ_news = []
 
 # 月次売買アクティビティ
 try:
     trade_act_df = load_trade_activity()
-except Exception:
+except Exception as _exc:
+    import logging
+
     import pandas as _pd
 
+    logging.getLogger(__name__).warning("Trade activity loading failed: %s", _exc)
     trade_act_df = _pd.DataFrame()
 
 # =====================================================================
