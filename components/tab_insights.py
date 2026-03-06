@@ -910,11 +910,11 @@ def _render_retrospective_section(
     timing: PortfolioTimingInsight,
     style_profile: StyleProfile | None,
     style_biases: list[BiasSignal] | None,
-    retro_context: dict[str, Any] | None = None,
     positions: list[dict],
     realized_pnl: float,
     unrealized_pnl: float,
     total_value: float,
+    retro_context: dict[str, Any] | None = None,
 ) -> None:
     """AI レトロスペクティブ（任意実行）セクションを描画する.
 

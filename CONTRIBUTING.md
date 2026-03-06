@@ -61,8 +61,8 @@ Keep these invariants when contributing to `src/core/behavior/`, `components/dl_
   (`RETRO_RESULT` / `RETRO_ERROR` in `state_keys.py`). Do not add automatic triggers or background tasks
   that call Copilot on page load.
 - **Anonymized prompt payloads**: when constructing a retrospective prompt, include only aggregated
-  summary text (statistics, style labels, bias signals). Do not embed raw ticker lists, cost prices, or
-  personally identifying portfolio metadata.
+  summary text (statistics, style labels, bias signals, memo theme counts). Do not embed raw ticker lists,
+  memo bodies, cost prices, or personally identifying portfolio metadata.
 - **Layer boundary**: `src/core/behavior/` has zero Streamlit imports. Streamlit session-state handling
   belongs in `components/` only.
 

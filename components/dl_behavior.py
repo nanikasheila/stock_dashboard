@@ -361,11 +361,11 @@ def load_trade_memo_context(
     if limit > 0:
         trades = trades[:limit]
 
-    memo_trades = [trade for trade in trades if str(trade.get("memo", "")).strip()]
+    memo_trades = [trade for trade in trades if isinstance(trade.get("memo"), str) and trade.get("memo", "").strip()]
     theme_counts: Counter[str] = Counter()
 
     for trade in memo_trades:
-        memo_text = str(trade.get("memo", "")).strip().lower()
+        memo_text = trade.get("memo", "").strip().lower()
         if not memo_text:
             continue
 
