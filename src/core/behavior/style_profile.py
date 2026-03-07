@@ -154,7 +154,7 @@ def _compute_beta(
             return None
 
         cov = combined["port"].cov(combined["bench"])
-        return round(cov / bench_var, 2)
+        return round(float(cov / bench_var), 2)
     except Exception as exc:  # pragma: no cover
         logger.debug("_compute_beta: failed — %s", exc)
         return None

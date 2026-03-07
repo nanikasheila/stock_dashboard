@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -279,7 +279,7 @@ def _render_trade_statistics_section(behavior_insight: BehaviorInsight) -> None:
                 st.caption(f"平均利益: ¥{wl.avg_win_jpy:+,.0f}")
             if wl.avg_loss_jpy is not None:
                 st.caption(f"平均損失: ¥{wl.avg_loss_jpy:+,.0f}")
-            pnl_color = "normal" if ts.total_realized_pnl_jpy >= 0 else "inverse"
+            pnl_color: Literal["normal", "inverse"] = "normal" if ts.total_realized_pnl_jpy >= 0 else "inverse"
             st.metric(
                 "累積実現損益",
                 f"¥{ts.total_realized_pnl_jpy:+,.0f}",
@@ -762,7 +762,7 @@ def _render_seasonality_subsection(history_df: pd.DataFrame) -> None:
                         _v = float(_row["平均リターン"].replace("%", "").replace("+", ""))
                     except (ValueError, AttributeError):
                         _v = 0.0
-                    _color = "normal" if _v >= 0 else "inverse"
+                    _color: Literal["normal", "inverse"] = "normal" if _v >= 0 else "inverse"
                     st.metric(_row["月"], _row["平均リターン"], delta_color=_color)
 
             if _second_half:
