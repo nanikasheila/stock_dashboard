@@ -146,13 +146,25 @@
         "writer": {
           "$ref": "#/$defs/agentConfig"
         },
-        "manager": {
+        "planner": {
           "$ref": "#/$defs/agentConfig"
         },
         "architect": {
           "$ref": "#/$defs/agentConfig"
         },
         "assessor": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "analyst": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "impact-analyst": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "test-designer": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "test-verifier": {
           "$ref": "#/$defs/agentConfig"
         }
       },

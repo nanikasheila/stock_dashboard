@@ -248,19 +248,130 @@ app.py
 
 ---
 
+## 5. インサイト（行動分析）フロー
+
+### 概要
+
+インサイトタブの分析はすべて決定論的な蓄積データ処理である。
+外部 API への自動呼び出しは行わない。LLM は後述のオプトインレトロスペクティブのみで使用する。
+
+### フロー
+
+```
+data/history/trade/*.json
+  │  (JSON 読込)
+  ▼
+src/data/history_store.py
+  └─ load_history(category="trade")  → list[dict]
+  │
+  ▼
+components/dl_behavior.py
+  ├─ load_behavior_insight()
+  │    │ src.core.behavior.trade_stats  — 取引統計・保有期間・勝敗計算
+  │    └─ → BehaviorInsight（ConfidenceLevel 付き）
+  │
+  ├─ load_timing_insight()
+  │    │ src.core.behavior.timing_analysis — RSI/SMA でエントリー評価
+  │    └─ → PortfolioTimingInsight
+  │
+  └─ load_style_profile_insight()
+       │ src.core.behavior.style_profile  — ADI スコア計算
+       │ src.core.behavior.bias_detector  — バイアス検出
+       └─ → StyleProfile + list[BiasSignal]
+  │
+  ▼
+components/tab_insights.py
+  └─ render_insights_tab()
+       ├─ 信頼度が低い場合 → "データ不足" 通知を表示（グレースフルデグレード）
+       ├─ 取引統計セクション
+       ├─ タイミングレビューセクション
+       ├─ スタイルプロファイル & バイアスセクション
+       └─ 長期分析セクション（季節性・ベンチマーク比較・ローリングシャープ）
+  │
+  ▼
+app.py → 📈 インサイト タブに表示
+```
+
+### 変換ポイント
+
+| ステップ | 変換内容 |
+|---|---|
+| JSON → dict リスト | `history_store.load_history()` がファイルをパース |
+| dict リスト → ドメイン計算 | `dl_behavior` が `src.core.behavior` 関数に委譲 |
+| ドメイン結果 → UI 表示 | `tab_insights` が `ConfidenceLevel` に応じて表示内容を切り替え |
+
+### データ不足時の挙動
+
+すべての `src.core.behavior` 関数は結果に `ConfidenceLevel`（high / medium / low / insufficient）を付与する。
+`tab_insights.py` は `insufficient` の場合に集計値を非表示にし、データ追加を促すメッセージを表示する。
+
+---
+
+## 6. オプトイン AI レトロスペクティブフロー
+
+### 概要
+
+AI レトロスペクティブは **ユーザーが明示的にボタンを押した場合のみ** 実行される。
+ページロード時・自動リフレッシュ時・バックグラウンドで LLM を呼び出すことはない。
+
+### フロー
+
+```
+components/tab_insights.py
+  └─ ユーザーが「レトロスペクティブを実行」ボタンをクリック
+       │
+       ▼
+  匿名化サマリー構築
+  (ティッカー・取得価格・個人情報・生メモ本文は除外。
+   統計値・スタイルラベル・バイアスシグナル・メモテーマ集計のみ)
+       │
+       ▼
+components/copilot_client.py
+  └─ サブプロセスで GitHub Copilot CLI を実行
+       └─ stdout を解析 → テキストレスポンスを返却
+       │
+       ▼
+  st.session_state[SK.RETRO_RESULT] に結果を保存
+  (エラー時は SK.RETRO_ERROR に格納)
+       │
+       ▼
+components/tab_insights.py → レトロスペクティブセクションに結果を表示
+```
+
+### プライバシー設計
+
+| 送信する情報 | 送信しない情報 |
+|---|---|
+| 集計統計（勝率・平均保有期間・ADI スコアなど） | 個別ティッカーシンボル |
+| スタイルラベル（aggressive / balanced / defensive） | 取得価格・評価損益 |
+| バイアスシグナル種別 | 保有株数・口座情報 |
+
+---
+
 ## 全体俯瞰
 
 ```
 [外部]                [ファイルシステム]           [メモリ]              [UI]
-Yahoo Finance API  → data/cache/          → DataFrame       →
+Yahoo Finance API  -> data/cache/          -> DataFrame       ->
                     price_history/                            components/
-                                                              data_loader  → app.py
-                   data/portfolio/        → list[Position]  →             → Plotly
+                                                              data_loader  -> app.py
+                   data/portfolio/        -> list[Position]  ->             -> Plotly
                    portfolio.csv                               charts.py
                                                                            表示
-                   data/history/          → list[dict]      →
+                   data/history/          -> list[dict]      ->
                    trade/*.json
 
-Copilot CLI ←── components/llm_analyzer ──────────────────────────────────→ app.py
+Copilot CLI <--- components/llm_analyzer ------------------------------------------> app.py
 (サブプロセス)   (メモリキャッシュ)                                          (LLM タブ)
+
+                   data/history/          -> list[dict]      ->
+                   trade/*.json             (取引履歴)         components/
+                                                              dl_behavior
+                                                                +- src/core/behavior/
+                                                                |   (決定論的計算)
+                                                                +-----------------> app.py
+                                                                                  (インサイトタブ)
+
+Copilot CLI <--- components/tab_insights  (オプトイン、ユーザー操作時のみ)
+(サブプロセス)   匿名化サマリーのみ送信
 ```

@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import requests
+import requests.exceptions
 import yfinance as yf
 from yfinance import EquityQuery
 
@@ -61,7 +63,9 @@ def _safe_get(info: dict, key: str) -> Any:
         if isinstance(value, float) and (value != value or abs(value) == float("inf")):
             return None
         return value
-    except Exception:
+    except (AttributeError, TypeError):
+        # AttributeError: info is not a dict-like object (e.g. None passed upstream).
+        # TypeError: unexpected value type prevents float comparison.
         return None
 
 
@@ -171,6 +175,10 @@ def get_stock_info(symbol: str) -> dict | None:
         return result
 
     except Exception as e:
+        # Why broad catch: yfinance wraps network and parsing errors inconsistently
+        # across versions; a narrow catch here would silently drop real failures if
+        # yfinance changes its internal exception hierarchy.  The caller always
+        # receives None on failure, so this is a safe outer boundary guard.
         logger.warning("Error fetching %s: %s", symbol, e)
         return None
 
@@ -240,7 +248,10 @@ def _try_get_field(df: Any, field_names: list[str]) -> float | None:
                 if value is not None and value == value:  # NaN check
                     return float(value)
         return None
-    except Exception as exc:
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError) as exc:
+        # KeyError/IndexError: label or positional access on unexpected DataFrame shape.
+        # TypeError/ValueError: float() conversion of non-numeric cell content.
+        # AttributeError: df lacks expected pandas API (e.g. non-DataFrame returned by yfinance).
         logger.debug("Failed to extract field from DataFrame: %s", exc)
         return None
 
@@ -267,7 +278,9 @@ def _try_get_history(df, field_names: list[str], max_periods: int = 4) -> list[f
                 if values:
                     return values
         return []
-    except Exception as exc:
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError) as exc:
+        # Same pandas access exceptions as _try_get_field; contiguous-row iteration
+        # can additionally raise IndexError on out-of-range iloc calls.
         logger.debug("Failed to extract history from DataFrame: %s", exc)
         return []
 
@@ -312,7 +325,10 @@ def _build_dividend_history_from_actions(ticker, shares_outstanding, max_years: 
                 fiscal_years.append(int(year))
 
         return amounts, fiscal_years
-    except Exception as exc:
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        # AttributeError: ticker.dividends unavailable or not a Series.
+        # KeyError: groupby label lookup failure on unexpected index shape.
+        # TypeError/ValueError: float/int conversion of non-numeric per-share amount.
         logger.debug("Failed to build dividend history from actions: %s", exc)
         return [], []
 
@@ -351,7 +367,10 @@ def get_stock_detail(symbol: str) -> dict | None:
             hist = ticker.history(period="2y")
             if hist is not None and not hist.empty and "Close" in hist.columns:
                 price_history = [float(v) for v in hist["Close"].tolist()]
-        except Exception as exc:
+        except (requests.exceptions.RequestException, AttributeError, KeyError, TypeError, ValueError) as exc:
+            # RequestException: network/HTTP failure fetching price history.
+            # AttributeError/KeyError: unexpected DataFrame structure from yfinance.
+            # TypeError/ValueError: list comprehension float() conversion failure.
             logger.debug("Failed to fetch price history for %s: %s", symbol, exc)
 
         # --- Balance sheet: equity ratio, total_assets, equity_history ---
@@ -393,7 +412,10 @@ def get_stock_detail(symbol: str) -> dict | None:
                         "Total Equity Gross Minority Interest",
                     ],
                 )
-        except Exception as exc:
+        except (requests.exceptions.RequestException, AttributeError, KeyError, TypeError, ValueError) as exc:
+            # RequestException: network/HTTP failure fetching balance sheet.
+            # AttributeError: ticker.balance_sheet not a DataFrame.
+            # KeyError/TypeError/ValueError: equity ratio arithmetic on unexpected data.
             logger.debug("Failed to fetch balance sheet for %s: %s", symbol, exc)
 
         # --- Cash flow ---
@@ -470,9 +492,14 @@ def get_stock_detail(symbol: str) -> dict | None:
                         col = cf.columns[i]
                         if hasattr(col, "year"):
                             cashflow_fiscal_years.append(int(col.year))
-            except Exception as exc:
+            except (AttributeError, KeyError, TypeError) as exc:
+                # AttributeError: cf.columns or col.year unexpectedly absent.
+                # KeyError/TypeError: column label not a date-like object.
                 logger.debug("Failed to extract fiscal years from cashflow: %s", exc)
-        except Exception as exc:
+        except (requests.exceptions.RequestException, AttributeError, KeyError, TypeError, ValueError) as exc:
+            # RequestException: network/HTTP failure fetching cashflow statement.
+            # AttributeError: ticker.cashflow not a DataFrame.
+            # KeyError/TypeError/ValueError: field extraction or list comprehension failure.
             logger.debug("Failed to fetch cashflow for %s: %s", symbol, exc)
 
         # KIK-388: Fallback to ticker.dividends when cashflow dividend history is sparse
@@ -542,7 +569,10 @@ def get_stock_detail(symbol: str) -> dict | None:
                             eps_previous = float(val)
                     if eps_current is not None and eps_previous is not None and eps_previous != 0:
                         eps_growth = float((eps_current - eps_previous) / abs(eps_previous))
-        except Exception as exc:
+        except (requests.exceptions.RequestException, AttributeError, KeyError, TypeError, ValueError) as exc:
+            # RequestException: network/HTTP failure fetching income statement.
+            # AttributeError: ticker.income_stmt not a DataFrame.
+            # KeyError: EPS row label absent; TypeError/ValueError: float() on bad cell.
             logger.debug("Failed to fetch income statement for %s: %s", symbol, exc)
 
         # --- Additional info fields ---
@@ -573,7 +603,10 @@ def get_stock_detail(symbol: str) -> dict | None:
                 trailing_eps_info = _safe_get(info, "trailingEps")
                 if trailing_eps_info is not None:
                     eps_current = float(trailing_eps_info)
-        except Exception as exc:
+        except (requests.exceptions.RequestException, AttributeError, KeyError, TypeError, ValueError) as exc:
+            # RequestException: network/HTTP failure re-fetching ticker.info.
+            # AttributeError: ticker.info is not dict-like after a partial yfinance failure.
+            # TypeError/ValueError: int() conversion of analyst opinions field.
             logger.debug("Failed to fetch additional info for %s: %s", symbol, exc)
 
         # 4. Merge into base dict
@@ -617,6 +650,11 @@ def get_stock_detail(symbol: str) -> dict | None:
         return result
 
     except Exception as e:
+        # Why broad catch: this is the outer guard for get_stock_detail.  The inner
+        # section-level catches above handle predictable yfinance errors; this catch
+        # exists to protect against unforeseen exceptions from yfinance version changes
+        # or completely unexpected runtime conditions (e.g. a section catch that was
+        # itself too narrow).  Callers receive None on any failure.
         logger.warning("Error fetching detail for %s: %s", symbol, e)
         return None
 
@@ -718,6 +756,10 @@ def screen_stocks(
         return all_quotes
 
     except Exception as e:
+        # Why broad catch: yf.screen() pagination can fail mid-run; partial results
+        # already collected are returned so the caller isn't left empty-handed.
+        # yfinance raises undocumented exception types on API contract violations,
+        # so a narrow catch would risk losing partial data silently.
         logger.warning("Error in screen_stocks: %s", e)
         return all_quotes if all_quotes else []
 
@@ -751,6 +793,9 @@ def get_price_history(symbol: str, period: str = "1y") -> pd.DataFrame | None:
             return None
         return hist[available_cols]
     except Exception as e:
+        # Why broad catch: ticker.history() can raise requests.exceptions,
+        # pandas errors, or undocumented yfinance exceptions depending on version.
+        # This is the public-API boundary — None is the safe fallback.
         logger.warning("Error fetching price history for %s: %s", symbol, e)
         return None
 
@@ -826,6 +871,9 @@ def get_close_prices_batch(
 
         return None
     except Exception as e:
+        # Why broad catch: yf.download() and MultiIndex column handling produce
+        # different exception types across yfinance versions and pandas versions.
+        # The function returns None on any failure; callers handle missing data.
         logger.warning("Error in batch price fetch: %s", e)
         return None
 
@@ -927,6 +975,10 @@ def get_macro_indicators() -> list[dict]:
                 }
             )
         except Exception as e:
+            # Why broad catch: per-ticker macro fetch should never abort the entire
+            # loop.  yfinance raises different exception types for rate-limit,
+            # network, and empty-data conditions across versions; catching them all
+            # here ensures the remaining tickers are still processed.
             logger.warning("Error fetching macro indicator %s: %s", name, e)
             continue
 
@@ -988,5 +1040,8 @@ def get_stock_news(symbol: str, count: int = 10) -> list[dict]:
             results.append(news_item)
         return results
     except Exception as e:
+        # Why broad catch: ticker.news response structure changes between yfinance
+        # versions (dict key names, nesting).  Any structural surprise should
+        # return [] rather than propagate to the UI.
         logger.warning("Error fetching news for %s: %s", symbol, e)
         return []

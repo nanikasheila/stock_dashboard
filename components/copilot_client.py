@@ -28,14 +28,38 @@ import subprocess
 import threading
 import time
 import uuid
+from collections.abc import Coroutine
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from copilot import CopilotClient, ModelInfo, PermissionHandler
-from copilot.generated.session_events import SessionEventType
+_SDK_AVAILABLE = False
+_SDK_IMPORT_ERROR: ImportError | None = None
+_RuntimeCopilotClient: Any = None
+_RuntimeModelInfo: Any = None
+_RuntimePermissionHandler: Any = None
+_RuntimeSessionEventType: Any = None
+
+if TYPE_CHECKING:
+    from copilot import CopilotClient, ModelInfo
+
+try:
+    from copilot import CopilotClient as ImportedCopilotClient
+    from copilot import ModelInfo as ImportedModelInfo
+    from copilot import PermissionHandler as ImportedPermissionHandler
+    from copilot.generated.session_events import SessionEventType as ImportedSessionEventType
+
+    _RuntimeCopilotClient = ImportedCopilotClient
+    _RuntimeModelInfo = ImportedModelInfo
+    _RuntimePermissionHandler = ImportedPermissionHandler
+    _RuntimeSessionEventType = ImportedSessionEventType
+
+    _SDK_AVAILABLE = True
+except ImportError as exc:
+    _SDK_IMPORT_ERROR = exc
 
 logger = logging.getLogger(__name__)
+TResult = TypeVar("TResult")
 
 # =====================================================================
 # モデル定義
@@ -86,14 +110,14 @@ def _ensure_event_loop() -> asyncio.AbstractEventLoop:
         return _loop
 
 
-def _run_async(coro: Any, *, timeout: float | None = None) -> Any:
+def _run_async(coro: Coroutine[Any, Any, TResult], *, timeout: float | None = None) -> TResult:
     """async コルーチンを同期的に実行して結果を返す.
 
     Why: 全公開 API は同期シグネチャを維持する必要がある。
     How: バックグラウンドループに submit し、Future.result() でブロッキング待ち。
     """
     loop = _ensure_event_loop()
-    future: Future[Any] = asyncio.run_coroutine_threadsafe(coro, loop)
+    future: Future[TResult] = asyncio.run_coroutine_threadsafe(coro, loop)
     return future.result(timeout=timeout)
 
 
@@ -113,6 +137,8 @@ async def _get_client() -> CopilotClient:
          auto_start=True なので create_session 時に自動接続される。
     """
     global _client
+    if not _SDK_AVAILABLE:
+        raise RuntimeError("GitHub Copilot SDK is not installed")
     if _client is not None:
         return _client
     # NOTE: _client_lock は同期ロックだが、この関数は _run_async 経由で
@@ -121,7 +147,7 @@ async def _get_client() -> CopilotClient:
     with _client_lock:
         if _client is not None:
             return _client
-        _client = CopilotClient(
+        _client = _RuntimeCopilotClient(
             {
                 "log_level": "warning",
                 "auto_start": True,
@@ -218,11 +244,12 @@ def is_available() -> bool:
 
     Why: SDK は copilot CLI のインストールを前提とする。
          CLI が存在しない環境では graceful に無効化する。
-    How: まず SDK パッケージの import を確認（モジュールレベルで済み）、
-         次に CLI バイナリの存在を確認する。
+    How: まず SDK パッケージの import 状態を確認し、
+          次に CLI バイナリの存在を確認する。
     """
+    if not _SDK_AVAILABLE:
+        return False
     try:
-        # SDK パッケージはモジュールレベルで import 済み
         # CLI バイナリの存在確認
         if shutil.which("copilot") is not None:
             return True
@@ -309,7 +336,7 @@ async def _async_call(
     session = await client.create_session(
         {
             "model": model,
-            "on_permission_request": PermissionHandler.approve_all,
+            "on_permission_request": _RuntimePermissionHandler.approve_all,
             "infinite_sessions": {"enabled": False},
         }
     )
@@ -321,11 +348,11 @@ async def _async_call(
 
         def on_event(event: Any) -> None:
             nonlocal result_text, error_msg
-            if event.type == SessionEventType.ASSISTANT_MESSAGE:
+            if event.type == _RuntimeSessionEventType.ASSISTANT_MESSAGE:
                 result_text = event.data.content
-            elif event.type == SessionEventType.SESSION_IDLE:
+            elif event.type == _RuntimeSessionEventType.SESSION_IDLE:
                 done.set()
-            elif event.type == SessionEventType.SESSION_ERROR:
+            elif event.type == _RuntimeSessionEventType.SESSION_ERROR:
                 error_msg = getattr(event.data, "message", None) or "unknown SDK error"
                 done.set()
 
@@ -495,9 +522,9 @@ async def _async_call_with_session(
 
     effective_session_id = session_id if session_id is not None else str(uuid.uuid4())
 
-    session_config: dict[str, Any] = {
+    session_config: Any = {
         "model": model,
-        "on_permission_request": PermissionHandler.approve_all,
+        "on_permission_request": _RuntimePermissionHandler.approve_all,
     }
 
     try:
@@ -516,9 +543,9 @@ async def _async_call_with_session(
 
         def on_event(event: Any) -> None:
             nonlocal result_text
-            if event.type == SessionEventType.ASSISTANT_MESSAGE:
+            if event.type == _RuntimeSessionEventType.ASSISTANT_MESSAGE:
                 result_text = event.data.content
-            elif event.type in (SessionEventType.SESSION_IDLE, SessionEventType.SESSION_ERROR):
+            elif event.type in (_RuntimeSessionEventType.SESSION_IDLE, _RuntimeSessionEventType.SESSION_ERROR):
                 done.set()
 
         session.on(on_event)

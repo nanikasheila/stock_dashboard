@@ -553,3 +553,176 @@ class TestBuildWatchlistSummary:
         result = summary_builder.build_watchlist_summary(name="big", symbols=symbols)
         # SYM10以降は含まれないことを確認
         assert len(result) <= 200
+
+
+# ---------------------------------------------------------------------------
+# TestSaveStyleProfile
+# ---------------------------------------------------------------------------
+
+
+class TestSaveStyleProfile:
+    """save_style_profile() のテスト。"""
+
+    def test_save_creates_file(self, tmp_path):
+        """ファイルが正しいパスに作成される。"""
+        from src.data.history_store import save_style_profile
+
+        style_data = {
+            "adi_score": 65.0,
+            "label": "攻め型",
+            "cash_ratio": 0.1,
+            "concentration_hhi": 0.25,
+            "annual_volatility_pct": 18.5,
+            "beta": 1.1,
+            "component_scores": {"volatility": 70, "beta": 65, "concentration": 60, "turnover": 55, "cash": 80},
+            "confidence": "medium",
+            "notes": "テスト用",
+        }
+        path = save_style_profile(style_data, base_dir=str(tmp_path))
+        assert Path(path).exists()
+        assert "style_profile" in path
+
+    def test_save_content_structure(self, tmp_path):
+        """JSON に必須キーが含まれる。"""
+        import json
+
+        from src.data.history_store import save_style_profile
+
+        style_data = {"adi_score": 50.0, "label": "バランス型", "confidence": "medium"}
+        path = save_style_profile(style_data, base_dir=str(tmp_path))
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["category"] == "style_profile"
+        assert "date" in data
+        assert "timestamp" in data
+        assert data["adi_score"] == 50.0
+        assert data["label"] == "バランス型"
+
+    def test_save_idempotent(self, tmp_path):
+        """同日2回保存してもファイルは1つ。"""
+        from src.data.history_store import save_style_profile
+
+        style_data = {"adi_score": 40.0, "label": "守り型", "confidence": "low"}
+        save_style_profile(style_data, base_dir=str(tmp_path))
+        style_data["adi_score"] = 45.0
+        save_style_profile(style_data, base_dir=str(tmp_path))
+        files = list((tmp_path / "style_profile").glob("*.json"))
+        assert len(files) == 1
+        # 後の値が反映される
+        import json
+
+        with open(files[0], encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["adi_score"] == 45.0
+
+    def test_sanitize_numpy(self, tmp_path):
+        """numpy 型が JSON シリアライズ可能。"""
+        import json
+
+        import numpy as np
+
+        from src.data.history_store import save_style_profile
+
+        style_data = {
+            "adi_score": np.float64(72.5),
+            "label": "攻め型",
+            "beta": np.float64(1.15),
+            "confidence": "high",
+        }
+        path = save_style_profile(style_data, base_dir=str(tmp_path))
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        assert isinstance(data["adi_score"], float)
+        assert isinstance(data["beta"], float)
+
+
+# ---------------------------------------------------------------------------
+# TestLoadStyleHistory
+# ---------------------------------------------------------------------------
+
+
+class TestLoadStyleHistory:
+    """load_style_history() のテスト。"""
+
+    def test_load_empty_dir(self, tmp_path):
+        """空ディレクトリで空リスト。"""
+        from src.data.history_store import load_style_history
+
+        result = load_style_history(base_dir=str(tmp_path))
+        assert result == []
+
+    def test_load_sorted_ascending(self, tmp_path):
+        """日付昇順で返る（チャート用）。"""
+        import json
+
+        d = tmp_path / "style_profile"
+        d.mkdir()
+        for day in ["2026-01-01", "2026-01-03", "2026-01-02"]:
+            (d / f"{day}_style_profile.json").write_text(
+                json.dumps({"category": "style_profile", "date": day, "adi_score": 50}),
+                encoding="utf-8",
+            )
+        from src.data.history_store import load_style_history
+
+        result = load_style_history(base_dir=str(tmp_path))
+        dates = [r["date"] for r in result]
+        assert dates == ["2026-01-01", "2026-01-02", "2026-01-03"]
+
+    def test_load_days_back_filter(self, tmp_path):
+        """days_back フィルタが機能する。"""
+        import json
+        from datetime import date, timedelta
+
+        d = tmp_path / "style_profile"
+        d.mkdir()
+        today = date.today()
+        old = (today - timedelta(days=400)).isoformat()
+        recent = (today - timedelta(days=5)).isoformat()
+        (d / f"{old}_style_profile.json").write_text(
+            json.dumps({"category": "style_profile", "date": old, "adi_score": 40}),
+            encoding="utf-8",
+        )
+        (d / f"{recent}_style_profile.json").write_text(
+            json.dumps({"category": "style_profile", "date": recent, "adi_score": 60}),
+            encoding="utf-8",
+        )
+        from src.data.history_store import load_style_history
+
+        result = load_style_history(days_back=30, base_dir=str(tmp_path))
+        assert len(result) == 1
+        assert result[0]["date"] == recent
+
+
+# ---------------------------------------------------------------------------
+# TestBuildStyleProfileSummary
+# ---------------------------------------------------------------------------
+
+
+class TestBuildStyleProfileSummary:
+    """build_style_profile_summary() のテスト。"""
+
+    def test_summary_format(self):
+        """出力形式が期待通り。"""
+        from src.data.summary_builder import build_style_profile_summary
+
+        result = build_style_profile_summary("2026-02-18", adi_score=72.3, label="攻め型")
+        assert "2026-02-18" in result
+        assert "スタイル" in result
+        assert "攻め型" in result
+        assert "ADI=72" in result
+
+    def test_summary_minimal(self):
+        """最小限の引数でも動作する。"""
+        from src.data.summary_builder import build_style_profile_summary
+
+        result = build_style_profile_summary("2026-01-01")
+        assert "2026-01-01" in result
+        assert "スタイル" in result
+
+    def test_summary_without_label(self):
+        """ラベルなし、スコアのみ。"""
+        from src.data.summary_builder import build_style_profile_summary
+
+        result = build_style_profile_summary("2026-03-15", adi_score=45.0)
+        assert "ADI=45" in result
+        assert "スタイル" in result

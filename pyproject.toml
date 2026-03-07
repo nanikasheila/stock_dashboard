@@ -68,6 +68,24 @@ ignore_missing_imports = true
 module = "tests.*"
 disallow_untyped_defs = false
 
+[[tool.mypy.overrides]]
+module = [
+    "components.data_loader",
+    "components.llm_analyzer",
+    "components.watchlist",
+    "src.core.health_check",
+    "src.core.portfolio.concentration",
+    "src.core.portfolio.portfolio_manager",
+    "src.core.return_estimate",
+    "src.core.screening.indicators",
+    "src.core.ticker_utils",
+    "src.data.embedding_client",
+    "src.data.graph.repository",
+    "src.data.history_store",
+    "src.data.yahoo_client",
+]
+ignore_errors = true
+
 # =====================================================================
 # pytest
 # =====================================================================

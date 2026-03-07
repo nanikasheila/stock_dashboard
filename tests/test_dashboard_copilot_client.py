@@ -25,12 +25,23 @@ from components.copilot_client import (
 # is_available
 # ---------------------------------------------------------------------------
 class TestIsAvailable:
+    def test_not_available_when_sdk_import_failed(self):
+        with (
+            patch("components.copilot_client._SDK_AVAILABLE", False),
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+        ):
+            assert is_available() is False
+
     def test_found_by_which(self):
-        with patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"):
+        with (
+            patch("components.copilot_client._SDK_AVAILABLE", True),
+            patch("components.copilot_client.shutil.which", return_value="/usr/bin/copilot"),
+        ):
             assert is_available() is True
 
     def test_found_by_subprocess(self):
         with (
+            patch("components.copilot_client._SDK_AVAILABLE", True),
             patch("components.copilot_client.shutil.which", return_value=None),
             patch("components.copilot_client.subprocess.run") as mock_run,
         ):
@@ -66,6 +77,15 @@ class TestModels:
 # get_available_models()
 # ---------------------------------------------------------------------------
 class TestGetAvailableModels:
+    def test_returns_fallback_when_sdk_missing(self):
+        with (
+            patch("components.copilot_client._SDK_AVAILABLE", False),
+            patch("components.copilot_client._models_cache", None),
+            patch("components.copilot_client._models_cache_timestamp", 0.0),
+        ):
+            models = get_available_models()
+        assert len(models) >= 5
+
     def test_returns_fallback_when_unavailable(self):
         """When CLI is not available, fallback list is returned."""
         with patch("components.copilot_client.is_available", return_value=False):

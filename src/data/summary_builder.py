@@ -233,3 +233,23 @@ def build_watchlist_summary(
     if symbols:
         parts.append(", ".join(symbols[:10]))
     return _trunc(" ".join(parts))
+
+
+def build_style_profile_summary(
+    profile_date: str,
+    adi_score: float | None = None,
+    label: str | None = None,
+) -> str:
+    """Build one-line summary for style profile snapshot.
+
+    Why: 履歴一覧表示で各スナップショットの概要を示すため。
+    How: "YYYY-MM-DD スタイル 攻め型 ADI=72" 形式。_trunc() で200文字制限。
+
+    Example: "2026-02-18 スタイル / 攻め型 / ADI=72"
+    """
+    parts = [f"{profile_date} スタイル"]
+    if label:
+        parts.append(label)
+    if adi_score is not None:
+        parts.append(f"ADI={adi_score:.0f}")
+    return _trunc(" / ".join(parts))

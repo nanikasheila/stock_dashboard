@@ -3,9 +3,15 @@
 Why: External callers use ``from src.data.graph import merge_stock`` etc.
      This __init__.py re-exports all public names so the package surface
      matches what the original monolithic graph_store.py provided.
-How: Explicitly imports every public symbol from the three sub-modules.
+How: Explicitly imports every public symbol from the four sub-modules.
      Private helpers (_get_mode, _get_driver, _set_embedding, etc.) are
      also re-exported so advanced callers and tests can access them.
+
+Sub-modules:
+- ``connection`` — driver lifecycle and write-mode detection.
+- ``schema``     — constraints, indexes, and embedding helper.
+- ``queries``    — Cypher string constants (internal; not part of public API).
+- ``repository`` — CRUD / query orchestration (public functions listed below).
 """
 
 from __future__ import annotations

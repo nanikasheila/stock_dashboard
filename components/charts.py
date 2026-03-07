@@ -741,3 +741,100 @@ def build_attribution_chart(
         font=dict(color="white"),
     )
     return fig
+
+
+# =====================================================================
+# スタイル・トレンドチャート
+# =====================================================================
+
+
+def plot_style_trend(history: list[dict]) -> go.Figure | None:
+    """Plot ADI score trend over time with style zone bands.
+
+    Why: 攻め守りスコア（ADI）の時系列推移を可視化し、投資スタイルの変化を把握できるようにする。
+    How: plotly line chart。Y軸0-100固定。閾値62/38で3ゾーン（攻め/バランス/守り）を
+         背景バンドで表現。直近値をマーカーで強調。
+    """
+    if not history or len(history) < 2:
+        return None
+
+    dates = [h["date"] for h in history]
+    scores = [h.get("adi_score", 50) for h in history]
+
+    fig = go.Figure()
+
+    # Background zone bands
+    fig.add_hrect(
+        y0=62,
+        y1=100,
+        fillcolor="#f87171",
+        opacity=0.08,
+        line_width=0,
+        annotation_text="攻め型",
+        annotation_position="top left",
+        annotation=dict(font_size=10, font_color="#f87171"),
+    )
+    fig.add_hrect(
+        y0=38,
+        y1=62,
+        fillcolor="#fbbf24",
+        opacity=0.05,
+        line_width=0,
+        annotation_text="バランス型",
+        annotation_position="top left",
+        annotation=dict(font_size=10, font_color="#fbbf24"),
+    )
+    fig.add_hrect(
+        y0=0,
+        y1=38,
+        fillcolor="#60a5fa",
+        opacity=0.08,
+        line_width=0,
+        annotation_text="守り型",
+        annotation_position="top left",
+        annotation=dict(font_size=10, font_color="#60a5fa"),
+    )
+
+    # Threshold reference lines
+    fig.add_hline(y=62, line_dash="dot", line_color="#f87171", opacity=0.5)
+    fig.add_hline(y=38, line_dash="dot", line_color="#60a5fa", opacity=0.5)
+
+    # Main ADI score line
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=scores,
+            mode="lines+markers",
+            name="ADI スコア",
+            line=dict(color="#a78bfa", width=2.5),
+            marker=dict(size=4),
+            hovertemplate="%{x}<br>ADI: %{y:.0f}<extra></extra>",
+        )
+    )
+
+    # Highlight latest point
+    fig.add_trace(
+        go.Scatter(
+            x=[dates[-1]],
+            y=[scores[-1]],
+            mode="markers",
+            name="直近",
+            marker=dict(color="#a78bfa", size=10, symbol="diamond", line=dict(color="white", width=1.5)),
+            hovertemplate="直近 %{x}<br>ADI: %{y:.0f}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        height=300,
+        yaxis=dict(range=[0, 100], title="ADI スコア", tickformat=","),
+        xaxis=dict(title=""),
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        font=dict(color="white"),
+        margin=dict(l=40, r=20, t=30, b=30),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.35),
+        hovermode="x unified",
+        showlegend=False,
+    )
+
+    return fig
